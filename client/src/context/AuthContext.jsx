@@ -1,58 +1,102 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 /**
- * Authentication Context for DriveEasy Car Rental System
- * Uses standard React useState, useEffect, and useContext
- * Prepared for Stage 2/3 JWT Authentication integration
+ * AuthContext for DriveEasy Car Rental System
+ * Holds { customer, token } and exposes login, logout, and session persistence.
  */
-
 const AuthContext = createContext(null);
 
+const STORAGE_KEYS = {
+  TOKEN: 'driveeasy_token',
+  CUSTOMER: 'driveeasy_customer'
+};
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('driveeasy_token') || null);
+  // Authentication state
+  const [customer, setCustomer] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem(STORAGE_KEYS.TOKEN) || null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize auth state from localStorage on app mount
+  // Restore saved session from localStorage on application load
   useEffect(() => {
     try {
-      const storedUser = localStorage.getItem('driveeasy_user');
-      if (storedUser && token) {
-        setUser(JSON.parse(storedUser));
+      const storedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      const storedCustomer = localStorage.getItem(STORAGE_KEYS.CUSTOMER);
+
+      if (storedToken && storedCustomer) {
+        const parsedCustomer = JSON.parse(storedCustomer);
+        // Ensure no sensitive fields like passwords could have been stored
+        if (parsedCustomer && typeof parsedCustomer === 'object') {
+          delete parsedCustomer.password;
+          setCustomer(parsedCustomer);
+          setToken(storedToken);
+        } else {
+          // Invalidate malformed storage
+          localStorage.removeItem(STORAGE_KEYS.TOKEN);
+          localStorage.removeItem(STORAGE_KEYS.CUSTOMER);
+        }
       }
     } catch (err) {
-      console.error('[AuthContext] Failed to parse stored user profile:', err);
-      localStorage.removeItem('driveeasy_user');
-      localStorage.removeItem('driveeasy_token');
+      console.error('[AuthContext] Failed to restore customer session:', err);
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.CUSTOMER);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   /**
-   * Login handler - persists JWT token and user info
+   * Login handler:
+   * Saves authenticated customer identity and backend-issued token
+   * 
+   * @param {object} customerData - { id, name, email, role }
+   * @param {string} authToken - Backend-issued JWT string
    */
-  const login = (userData, authToken) => {
-    setUser(userData);
+  const login = (customerData, authToken) => {
+    if (!customerData || !authToken) {
+      console.error('[AuthContext] Invalid login parameters provided.');
+      return;
+    }
+
+    // Sanitize to never store passwords in state or localStorage
+    const safeCustomer = {
+      id: customerData.id,
+      name: customerData.name || customerData.email,
+      email: customerData.email,
+      role: customerData.role || 'customer'
+    };
+
+    setCustomer(safeCustomer);
     setToken(authToken);
-    localStorage.setItem('driveeasy_token', authToken);
-    localStorage.setItem('driveeasy_user', JSON.stringify(userData));
+
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOKEN, authToken);
+      localStorage.setItem(STORAGE_KEYS.CUSTOMER, JSON.stringify(safeCustomer));
+    } catch (err) {
+      console.error('[AuthContext] Error persisting session to localStorage:', err);
+    }
   };
 
   /**
-   * Logout handler - clears session
+   * Logout handler:
+   * Clears in-memory authentication state and localStorage tokens
    */
   const logout = () => {
-    setUser(null);
+    setCustomer(null);
     setToken(null);
-    localStorage.removeItem('driveeasy_token');
-    localStorage.removeItem('driveeasy_user');
+    try {
+      localStorage.removeItem(STORAGE_KEYS.TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.CUSTOMER);
+    } catch (err) {
+      console.error('[AuthContext] Error clearing localStorage on logout:', err);
+    }
   };
 
   const value = {
-    user,
+    customer,
     token,
-    isAuthenticated: !!token,
+    isAuthenticated: !!token && !!customer,
+    role: customer?.role || null,
     loading,
     login,
     logout
@@ -66,7 +110,7 @@ export const AuthProvider = ({ children }) => {
 };
 
 /**
- * Custom hook to easily consume the AuthContext in any component
+ * Custom hook to consume AuthContext
  */
 export const useAuth = () => {
   const context = useContext(AuthContext);

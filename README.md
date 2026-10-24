@@ -2,16 +2,58 @@
 
 **Course:** ITUE301 Open-Book Practical Examination  
 **Institution:** CSPIT, CHARUSAT  
-**Development Stage:** Stage 2 — Frontend Component Architecture & UI  
+**Development Stage:** Stage 3 — Routing, Authentication State, Protected Routes & Role-Based Access  
 **Architecture:** Full-Stack MERN (Node.js, Express, MongoDB, React, Vite)
 
 ---
 
 ## 📌 Project Overview
 
-**DriveEasy Car Rental System** is an end-to-end full-stack web application designed for seamless vehicle rentals.
-- The **Backend (Express + Node.js)** exposes modular RESTful endpoints (`/api/v1`), connects to MongoDB via Mongoose, enforces CORS, provides standardized error handling, and prepares JWT Bearer token authentication.
-- The **Frontend (React + Vite)** provides a component-driven SPA interface with React Router DOM, state management via React Context (`useState`, `useEffect`, `useContext`), and an API client module.
+**DriveEasy Car Rental System** is an end-to-end full-stack web application designed for vehicle fleet browsing and reservations.
+- The **Backend (Express + Node.js)** exposes modular RESTful endpoints (`/api/v1`), connects to MongoDB via Mongoose, enforces CORS, provides standardized error handling, and implements JWT Bearer token authentication and role authorization guards (`authorizeRoles`).
+- The **Frontend (React + Vite)** provides a component-driven SPA interface with React Router DOM, state management via React Context (`{ customer, token }`), session persistence via `localStorage`, route protection via `ProtectedRoute`, and lazy loading via `React.lazy` and `Suspense`.
+
+---
+
+## 🧭 Application Route Mapping
+
+| Route | Component | Access Control | Behavior / Description |
+|---|---|---|---|
+| **`/`** | `LoginPage.jsx` | Public | Entry route. Form validation, calls `POST /api/v1/auth/login`. If authenticated, redirects to `/fleet`. |
+| **`/fleet`** | `FleetPage.jsx` | **Protected** (All authenticated) | Redirects unauthenticated users to `/`. Displays vehicle fleet, filter tabs, and reservation form. |
+| **`/my-bookings`** | `MyBookingsPage.jsx` | **Protected** (All authenticated) | Redirects unauthenticated users to `/`. Displays customer's reservations with loading, empty, and error states. |
+| **`/admin`** | `AdminPanel.jsx` | **Protected & Lazy-Loaded** (`admin`, `fleet_manager`) | Loaded dynamically with `React.lazy` & `Suspense`. Customer role gets an explicit Access Denied guard. |
+| `*` | `NotFoundPage.jsx` | Public | Friendly 404 route for undefined URLs. |
+
+---
+
+## 🧪 Registered Test Accounts by Role
+
+The backend authentication endpoint (`POST /api/v1/auth/login`) verifies credentials and issues signed JWT tokens:
+
+| Role | Email | Password | Allowed Access & Permissions |
+|---|---|---|---|
+| **Customer** | `customer@driveeasy.com` | `customer123` | View fleet, create bookings, view their own bookings. Restricted from `/admin`. |
+| **Fleet Manager** | `manager@driveeasy.com` | `manager123` | View fleet, view bookings, toggle fleet availability, and approve/complete rentals. |
+| **Administrator** | `admin@driveeasy.com` | `admin123` | Full access to fleet, customer bookings, cancellation, and administrative operations. |
+
+---
+
+## 🛡️ Frontend Protection vs. Backend AuthGuard (Viva Explanation)
+
+A core requirement in software engineering and web application security is recognizing the boundary between frontend protection and backend authorization:
+
+### 1. Frontend Route Protection (`ProtectedRoute.jsx`)
+- **Purpose:** User Experience (UX) and navigation control.
+- **Mechanism:** Inspects client-side state (`isAuthenticated`, `customer.role`). If unauthenticated, redirects to `/` via React Router's `<Navigate to="/" replace />`. If unauthorized, renders an "Access Denied" view.
+- **Limitation:** Client-side JavaScript runs in the user's browser. An attacker can inspect local storage, modify client state, or send manual HTTP requests (via curl, Postman, Thunder Client) directly to server endpoints, bypassing the UI entirely.
+
+### 2. Backend Authorization Guard (`authMiddleware.js`)
+- **Purpose:** True System Security & Data Protection.
+- **Mechanism:** 
+  1. `verifyToken`: Extracts the HTTP `Authorization: Bearer <jwt_token>` header, verifies the cryptographic signature against `JWT_SECRET`, and extracts the decoded payload (`req.customer`).
+  2. `authorizeRoles(...roles)`: Verifies that `req.customer.role` matches the clearance required for the endpoint (e.g. `['admin', 'fleet_manager']`). If invalid, rejects the request with HTTP `401 Unauthorized` or `403 Forbidden`.
+- **Verdict:** Frontend protection guides legitimate users, but **only the backend guard protects sensitive data and operations against malicious tampering.**
 
 ---
 
@@ -23,31 +65,33 @@ driveeasy/
 │   ├── src/
 │   │   ├── components/              # Reusable UI Components
 │   │   │   ├── VehicleCard.jsx      # Props: model, type, pricePerDay, available, onBook
-│   │   │   ├── BookingForm.jsx      # Vehicle reservation form & price calculation
-│   │   │   ├── Navbar.jsx           # React Router Link SPA navigation bar
+│   │   │   ├── BookingForm.jsx      # Reservation form & real-time total price calculation
+│   │   │   ├── Navbar.jsx           # Role-aware navigation (NavLink SPA links & Logout)
 │   │   │   ├── Loading.jsx          # Reusable loading spinner indicator
 │   │   │   ├── ErrorMessage.jsx     # Reusable error alert banner with retry
 │   │   │   ├── StatusCard.jsx       # Real-time backend & DB health monitor
 │   │   │   └── Footer.jsx           # University & examination metadata footer
-│   │   ├── pages/                   # Routed Application Pages
-│   │   │   ├── HomePage.jsx         # System overview & live health verification
-│   │   │   ├── LoginPage.jsx        # Login with client validation & auth connection
-│   │   │   ├── FleetPage.jsx        # Vehicle fleet grid, type filter & booking form
-│   │   │   ├── MyBookingsPage.jsx   # Booking list with loading, empty & error states
-│   │   │   ├── AdminPanel.jsx       # Admin dashboard: Fleet, Bookings & Status
+│   │   ├── pages/                   # Application Pages
+│   │   │   ├── LoginPage.jsx        # Login at / with validation & authService connection
+│   │   │   ├── FleetPage.jsx        # Protected fleet grid, filter tabs & booking form
+│   │   │   ├── MyBookingsPage.jsx   # Protected booking list with loading & error states
+│   │   │   ├── AdminPanel.jsx       # Protected & Lazy-Loaded Admin/Manager Console
+│   │   │   ├── HomePage.jsx         # Architecture & status dashboard
 │   │   │   └── NotFoundPage.jsx     # 404 Route handler
 │   │   ├── context/                 # State Management
-│   │   │   └── AuthContext.jsx      # Context API (useState, useEffect, useContext)
-│   │   ├── services/                # API Client
-│   │   │   └── api.js               # Universal fetch client with JWT Bearer support
+│   │   │   └── AuthContext.jsx      # Context API holding { customer, token }, login, logout
+│   │   ├── services/                # API Clients
+│   │   │   ├── authService.js       # Reusable loginUser (POST /auth/login) helper
+│   │   │   └── api.js               # Universal fetch wrapper with Bearer token injection
 │   │   ├── routes/                  # Client-side Routing
-│   │   │   └── AppRoutes.jsx        # Routes for /, /login, /fleet, /my-bookings, /admin
+│   │   │   ├── ProtectedRoute.jsx   # Route guard: redirects to / and checks allowedRoles
+│   │   │   └── AppRoutes.jsx        # Route configuration with React.lazy and Suspense
 │   │   ├── App.jsx                  # Main Application Layout
 │   │   ├── main.jsx                 # Entry point with BrowserRouter & AuthProvider
 │   │   └── index.css                # Global CSS design system (Vanilla CSS)
 │   ├── .env.example                 # Frontend environment variables template
 │   ├── .env                         # Local frontend environment config
-│   ├── index.html                   # HTML entry point with modern Google Fonts
+│   ├── index.html                   # HTML entry point with Google Fonts
 │   ├── package.json                 # Frontend dependencies and npm scripts
 │   └── vite.config.js               # Vite build configuration (Port 5173)
 │
@@ -55,19 +99,22 @@ driveeasy/
 │   ├── config/
 │   │   └── db.js                    # Decoupled MongoDB connection logic
 │   ├── controllers/
+│   │   ├── authController.js        # Authenticates customer & issues JWT token
 │   │   └── healthController.js      # Controller for /api/v1/health
 │   ├── middleware/
-│   │   ├── authMiddleware.js        # JWT Bearer token authentication middleware
+│   │   ├── authMiddleware.js        # verifyToken and authorizeRoles guards
 │   │   ├── errorHandler.js          # Centralized error handler (no leaked secrets)
 │   │   └── notFoundHandler.js       # 404 handler for undefined API routes
 │   ├── models/
 │   │   └── index.js                 # Placeholder for User, Car, Rental models
 │   ├── routes/
-│   │   ├── healthRoutes.js          # Route handler for /api/v1/health
+│   │   ├── authRoutes.js            # POST /auth/login and GET /auth/me
+│   │   ├── healthRoutes.js          # GET /health
 │   │   └── index.js                 # API v1 central router
 │   ├── services/
-│   │   └── healthService.js         # Health metrics and DB state evaluator
-│   ├── app.js                       # Express application configuration & CORS
+│   │   ├── healthService.js         # Health metrics evaluator
+│   │   └── authService.js           # Auth business logic
+│   ├── app.js                       # Express app configuration & CORS
 │   ├── server.js                    # Server entry point
 │   ├── .env.example                 # Server environment variables template
 │   ├── .env                         # Local server environment config
@@ -79,89 +126,25 @@ driveeasy/
 
 ---
 
-## 🎨 Component Architecture & Data Flow
+## 🚀 Running and Testing the Application
 
-### 1. `VehicleCard.jsx`
-- **Props Accepted:**
-  - `model` *(string)*: Vehicle name (e.g., "Honda City ZX")
-  - `type` *(string)*: Vehicle category ("Hatchback", "Sedan", "SUV")
-  - `pricePerDay` *(number)*: Daily rental rate (e.g., 2800)
-  - `available` *(boolean)*: Availability status flag
-  - `onBook` *(function)*: Optional callback invoked when the user clicks "Book Now"
-- **Behavior:**
-  - Renders all 4 required vehicle properties.
-  - When `available === true`: Displays active status dot and **"Book Now ➔"** button.
-  - When `available === false`: Displays red status dot and **"Not Available"** badge instead of the button.
-  - Clicking "Book Now" executes `onBook({ model, type, pricePerDay, available })`.
-
-### 2. `FleetPage.jsx`
-- Contains filter tabs: **All**, **Hatchback**, **Sedan**, and **SUV**.
-- Integrates `BookingForm` with `selectedVehicle`, `pickupDate`, and `returnDate` managed via `useState`.
-- Shows real-time selected vehicle and chosen dates state updates.
-- Renders a responsive grid of `VehicleCard` components using clean prop passing from parent.
-- Prepares for live API data (`GET /cars`) with fallback to initial sample fleet.
-
-### 3. `LoginPage.jsx`
-- Provides Email and Password input fields with accessible labels.
-- Client-side validation: verifies non-empty inputs, valid email pattern, and minimum password length.
-- Connects to `AuthContext` and `api.js` login service.
-- **Strict verification:** Never pretends authentication succeeded if the backend rejects credentials.
-- Includes examination quick-fill test credentials.
-
-### 4. `MyBookingsPage.jsx`
-- Displays user car rental reservations with vehicle details, pickup date, return date, and status badges (*Confirmed, Pending, Completed, Cancelled*).
-- Implements comprehensive state handling:
-  - **Loading State:** uses `<Loading />` spinner.
-  - **Empty State:** clean prompt to explore fleet when no bookings exist.
-  - **Error State:** uses `<ErrorMessage onRetry={...} />`.
-
-### 5. `AdminPanel.jsx`
-- Dedicated console for administrators and fleet managers.
-- Top KPI cards: Total Fleet, Available Cars, Pending Bookings, Total Estimated Revenue.
-- 3 distinct management sections:
-  1. **Bookings Management:** Table of all customer reservations.
-  2. **Vehicle Fleet Inventory:** Fleet table with real-time availability toggle.
-  3. **Status Decision Console:** Approve pending requests, complete rentals, or cancel bookings.
-
-### 6. `Navbar.jsx`
-- Uses **React Router `Link`** components for instantaneous SPA navigation without page refreshes.
-- Links to: **Dashboard (`/`)**, **Fleet (`/fleet`)**, **My Bookings (`/my-bookings`)**, **Admin Panel (`/admin`)**, and **Login (`/login`)**.
-
----
-
-## 🚀 Running the Project
-
-### Start Backend Server:
+### 1. Start the Backend Server:
 ```bash
 cd driveeasy/server
 npm run dev
 ```
 > Server runs on `http://localhost:5000` with nodemon.
 
-### Start Frontend Client:
+### 2. Start the Frontend Client:
 ```bash
 cd driveeasy/client
 npm run dev
 ```
 > Client runs on `http://localhost:5173` with Vite.
 
-### Verify Frontend Production Build:
+### 3. Verify Frontend Production Build:
 ```bash
 cd driveeasy/client
 npm run build
 ```
-*(Build transforms all modules cleanly without any compilation errors)*
-
----
-
-## 🗺️ 7-Stage Examination Development Roadmap
-
-| Stage | Milestone | Status | Description |
-|---|---|---|---|
-| **Stage 1** | **Foundation & Starter Shell** | ✅ Completed | Server & client setup, health check endpoint, environment variables, CORS |
-| **Stage 2** | **Frontend Component Architecture & UI** | ✅ **Completed** | VehicleCard, BookingForm, Navbar, LoginPage, FleetPage, MyBookingsPage, AdminPanel |
-| **Stage 3** | Car Fleet Management | ⏳ Next | Car Mongoose schema, seed script, REST CRUD endpoints (`/api/v1/cars`) |
-| **Stage 4** | Rental Booking System | ⏳ Upcoming | Rental schema, booking transactions, date validation & total cost calculation |
-| **Stage 5** | Authentication & Role Guards | ⏳ Upcoming | User registration, login, JWT issuance, ProtectedRoute component |
-| **Stage 6** | Payments & Notifications | ⏳ Upcoming | Invoice receipts, payment calculation & alerts |
-| **Stage 7** | Testing & Final Polish | ⏳ Upcoming | Thunder Client API collection, UI polish & final viva documentation |
+Notice Vite builds the main bundle (`index.js`) and extracts `AdminPanel.js` into its own lazy chunk automatically!

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * Initial mock data for fleet and booking administration
@@ -24,6 +25,7 @@ const INITIAL_ADMIN_BOOKINGS = [
  * Includes sections for Vehicles, Bookings, and Booking-Status Management.
  */
 const AdminPanel = () => {
+  const { customer, role } = useAuth();
   const [activeTab, setActiveTab] = useState('bookings'); // 'bookings' | 'vehicles' | 'status'
   const [fleet, setFleet] = useState(INITIAL_ADMIN_FLEET);
   const [bookings, setBookings] = useState(INITIAL_ADMIN_BOOKINGS);
@@ -55,9 +57,11 @@ const AdminPanel = () => {
     showFeedback(`Booking #${bookingId} status changed to ${newStatus}`);
   };
 
+  const isAdmin = role === 'admin';
+
   return (
     <div className="admin-panel-page">
-      {/* Page Header */}
+      {/* Page Header with Role Distinction */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -67,13 +71,16 @@ const AdminPanel = () => {
         marginBottom: '2rem'
       }}>
         <div>
-          <h2>Administrator & Fleet Manager Panel</h2>
+          <h2>{isAdmin ? 'System Administrator Console' : 'Fleet Operations Management'}</h2>
           <p style={{ marginTop: '0.25rem' }}>
-            DriveEasy Car Rental Management • CSPIT Examination Console
+            Logged in as <strong>{customer?.name}</strong> •{' '}
+            <span style={{ color: 'var(--text-muted)' }}>
+              {isAdmin ? 'Full Administrative & Financial Clearance' : 'Fleet Dispatch & Booking Approval Operations'}
+            </span>
           </p>
         </div>
-        <span className="badge badge-primary" style={{ padding: '0.4rem 0.8rem' }}>
-          🛡️ Admin Privileges Active
+        <span className={`badge ${isAdmin ? 'badge-danger' : 'badge-warning'}`} style={{ padding: '0.4rem 0.8rem' }}>
+          {isAdmin ? '🛡️ Administrator Access' : '🚙 Fleet Manager Access'}
         </span>
       </div>
 

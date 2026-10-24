@@ -1,28 +1,39 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 /**
  * Navbar Component
- * Reusable navigation header utilizing React Router Link components
- * Includes navigation for Fleet, My Bookings, Admin Panel, and Login/Profile
+ * Role-aware SPA navigation header.
+ * Conditionally renders navigation links according to customer authentication state and role.
  */
 const Navbar = () => {
-  const location = useLocation();
-  const { user, isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
+  const { customer, isAuthenticated, role, logout } = useAuth();
 
-  const navLinks = [
-    { to: '/', label: 'Dashboard' },
-    { to: '/fleet', label: 'Fleet' },
-    { to: '/my-bookings', label: 'My Bookings' },
-    { to: '/admin', label: 'Admin Panel' }
-  ];
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
+  // Helper for role badge styling
+  const renderRoleBadge = () => {
+    if (!customer) return null;
+    switch (role) {
+      case 'admin':
+        return <span className="badge badge-danger">🛡️ Admin</span>;
+      case 'fleet_manager':
+        return <span className="badge badge-warning">🚙 Fleet Manager</span>;
+      default:
+        return <span className="badge badge-primary">👤 Customer</span>;
+    }
+  };
 
   return (
     <header className="navbar">
       <div className="container nav-container">
         {/* Brand Logo */}
-        <Link to="/" className="brand-logo" id="nav-brand-logo">
+        <Link to={isAuthenticated ? "/fleet" : "/"} className="brand-logo" id="nav-brand-logo">
           <div className="brand-icon">
             🚗
           </div>
@@ -31,45 +42,83 @@ const Navbar = () => {
           </div>
         </Link>
 
-        {/* Navigation Links using React Router Link */}
+        {/* Dynamic Role-Aware Navigation Links */}
         <nav>
           <ul className="nav-links">
-            {navLinks.map((link) => (
-              <li key={link.to}>
-                <Link
-                  to={link.to}
-                  className={`nav-link ${location.pathname === link.to ? 'active' : ''}`}
+            {isAuthenticated ? (
+              <>
+                {/* Available to all authenticated users */}
+                <li>
+                  <NavLink
+                    to="/fleet"
+                    className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                    id="nav-link-fleet"
+                  >
+                    Fleet
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink
+                    to="/my-bookings"
+                    className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                    id="nav-link-bookings"
+                  >
+                    My Bookings
+                  </NavLink>
+                </li>
+
+                {/* Only visible to Admin and Fleet Manager roles */}
+                {(role === 'admin' || role === 'fleet_manager') && (
+                  <li>
+                    <NavLink
+                      to="/admin"
+                      className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                      id="nav-link-admin"
+                    >
+                      {role === 'admin' ? 'Admin Panel' : 'Fleet Operations'}
+                    </NavLink>
+                  </li>
+                )}
+              </>
+            ) : (
+              /* Public / Unauthenticated state */
+              <li>
+                <NavLink
+                  to="/"
+                  className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+                  id="nav-link-login-tab"
                 >
-                  {link.label}
-                </Link>
+                  Sign In
+                </NavLink>
               </li>
-            ))}
+            )}
           </ul>
         </nav>
 
-        {/* Auth / Action Section */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        {/* User Identity & Logout Button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           {isAuthenticated ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                👤 <strong>{user?.name || user?.email || 'User'}</strong>
-              </span>
+              <div style={{ textAlign: 'right', display: 'none', md: 'block' }}>
+                <span style={{ fontSize: '0.88rem', fontWeight: 600, display: 'block', color: 'var(--text-main)' }}>
+                  {customer?.name}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {renderRoleBadge()}
+                </span>
+              </div>
               <button
                 type="button"
-                onClick={logout}
+                onClick={handleLogout}
                 className="btn btn-outline btn-sm"
                 id="nav-btn-logout"
               >
-                Logout
+                Logout ➔
               </button>
             </div>
           ) : (
-            <Link
-              to="/login"
-              className={`btn ${location.pathname === '/login' ? 'btn-primary' : 'btn-outline'} btn-sm`}
-              id="nav-link-login"
-            >
-              Login / Sign In
+            <Link to="/" className="btn btn-primary btn-sm" id="nav-btn-signin">
+              Login Account
             </Link>
           )}
         </div>

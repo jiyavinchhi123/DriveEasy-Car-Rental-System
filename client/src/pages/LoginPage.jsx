@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { apiRequest } from '../services/api';
+import { loginUser } from '../services/authService';
 import ErrorMessage from '../components/ErrorMessage';
 
 /**
  * LoginPage Component
- * Full login form with client-side validation, error handling,
- * and authentication integration with AuthContext and backend API.
+ * Public entry route (/): handles credential validation, calls backend authentication service,
+ * and redirects authenticated customers/managers to /fleet.
  */
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const location = useLocation();
+  const { customer, isAuthenticated, login } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,15 +21,23 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
+  // If already authenticated, automatically redirect to /fleet or intended location
+  useEffect(() => {
+    if (isAuthenticated) {
+      const destination = location.state?.from?.pathname || '/fleet';
+      navigate(destination, { replace: true });
+    }
+  }, [isAuthenticated, navigate, location]);
+
   // Client-side required field validation
-  const validate = () => {
+  const validateForm = () => {
     const errors = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!email.trim()) {
       errors.email = 'Email address is required.';
-    } else if (!emailRegex.test(email.trim())) {
-      errors.email = 'Please enter a valid email address.';
+    } else if (!emailPattern.test(email.trim())) {
+      errors.email = 'Please provide a valid email address (e.g. user@driveeasy.com).';
     }
 
     if (!password) {
@@ -46,49 +55,58 @@ const LoginPage = () => {
     setServerError('');
     setSuccessMsg('');
 
-    // Perform client-side validation first
-    if (!validate()) {
+    if (!validateForm()) {
       return;
     }
 
     setLoading(true);
 
     try {
-      // Attempt login via backend API
-      const result = await apiRequest('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email: email.trim(), password })
-      });
+      // Connect to reusable authentication service -> POST /api/v1/auth/login
+      const result = await loginUser(email, password);
 
-      // Strict verification: Do not pretend authentication succeeded if backend rejected it
+      // Strict enforcement: Never accept arbitrary credentials without valid server confirmation
       if (!result.success) {
-        setServerError(
-          result.error ||
-          'Authentication failed: Invalid credentials or backend service unavailable.'
-        );
+        setServerError(result.error || 'Authentication rejected by backend server.');
         setLoading(false);
         return;
       }
 
-      // Backend confirmed credentials successfully
-      const userData = result.data?.user || { email: email.trim(), role: 'customer' };
-      const token = result.data?.token || 'driveeasy_mock_jwt_token_stage2';
+      // Server successfully verified credentials and issued JWT token
+      const customerData = result.data?.customer;
+      const token = result.data?.token;
 
-      login(userData, token);
-      setSuccessMsg('Login successful! Redirecting...');
-      setTimeout(() => navigate('/fleet'), 800);
+      if (!customerData || !token) {
+        setServerError('Server response was missing required authentication payload.');
+        setLoading(false);
+        return;
+      }
+
+      // Persist in AuthContext & localStorage (passwords are NEVER stored)
+      login(customerData, token);
+
+      setSuccessMsg(`Login verified as ${customerData.role.toUpperCase()}. Redirecting to fleet...`);
+
+      // Redirect to /fleet or originally requested protected route
+      setTimeout(() => {
+        const targetPath = location.state?.from?.pathname || '/fleet';
+        navigate(targetPath, { replace: true });
+      }, 600);
     } catch (err) {
-      setServerError('An unexpected error occurred while connecting to authentication service.');
+      setServerError('Network failure: Unable to reach the backend authentication service on port 5000.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Quick fill helper for exam testing
-  const handleQuickFill = (demoRole) => {
-    if (demoRole === 'admin') {
+  // Helper to prefill examination credentials for the 3 distinct roles
+  const handleQuickFill = (roleType) => {
+    if (roleType === 'admin') {
       setEmail('admin@driveeasy.com');
       setPassword('admin123');
+    } else if (roleType === 'fleet_manager') {
+      setEmail('manager@driveeasy.com');
+      setPassword('manager123');
     } else {
       setEmail('customer@driveeasy.com');
       setPassword('customer123');
@@ -98,30 +116,31 @@ const LoginPage = () => {
   };
 
   return (
-    <div style={{ maxWidth: '460px', margin: '2rem auto' }}>
-      <div className="card">
+    <div style={{ maxWidth: '480px', margin: '2rem auto' }}>
+      <div className="card" style={{ padding: '2rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div style={{
-            width: '48px',
-            height: '48px',
+            width: '54px',
+            height: '54px',
             background: 'var(--primary-light)',
             color: 'var(--primary)',
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '1.5rem',
-            margin: '0 auto 0.75rem'
+            fontSize: '1.75rem',
+            margin: '0 auto 0.75rem',
+            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)'
           }}>
             🔑
           </div>
-          <h2>Welcome Back</h2>
+          <h2>DriveEasy Login</h2>
           <p style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>
-            Sign in to your DriveEasy Car Rental account
+            Sign in to access fleet reservation and bookings
           </p>
         </div>
 
-        {/* Server or Authentication Error Display */}
+        {/* Server & Authentication Error Banner */}
         {serverError && (
           <ErrorMessage
             message={serverError}
@@ -129,7 +148,7 @@ const LoginPage = () => {
           />
         )}
 
-        {/* Success feedback */}
+        {/* Success Feedback */}
         {successMsg && (
           <div style={{
             background: '#ecfdf5',
@@ -138,31 +157,31 @@ const LoginPage = () => {
             padding: '0.75rem 1rem',
             borderRadius: '8px',
             marginBottom: '1.25rem',
-            fontSize: '0.9rem'
+            fontSize: '0.88rem'
           }}>
             ✅ {successMsg}
           </div>
         )}
 
         <form onSubmit={handleSubmit} noValidate>
-          {/* Email Field */}
+          {/* Email Input */}
           <div style={{ marginBottom: '1.25rem' }}>
             <label
-              htmlFor="loginEmail"
+              htmlFor="loginEmailInput"
               style={{ display: 'block', fontSize: '0.88rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}
             >
               Email Address <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
             <input
-              id="loginEmail"
+              id="loginEmailInput"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. user@driveeasy.com"
+              placeholder="e.g. customer@driveeasy.com"
               disabled={loading}
               style={{
                 width: '100%',
-                padding: '0.65rem 0.85rem',
+                padding: '0.7rem 0.85rem',
                 border: `1px solid ${fieldErrors.email ? 'var(--danger)' : 'var(--border-color)'}`,
                 borderRadius: '8px',
                 fontSize: '0.95rem',
@@ -176,16 +195,16 @@ const LoginPage = () => {
             )}
           </div>
 
-          {/* Password Field */}
+          {/* Password Input */}
           <div style={{ marginBottom: '1.5rem' }}>
             <label
-              htmlFor="loginPassword"
+              htmlFor="loginPasswordInput"
               style={{ display: 'block', fontSize: '0.88rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}
             >
               Password <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
             <input
-              id="loginPassword"
+              id="loginPasswordInput"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -193,7 +212,7 @@ const LoginPage = () => {
               disabled={loading}
               style={{
                 width: '100%',
-                padding: '0.65rem 0.85rem',
+                padding: '0.7rem 0.85rem',
                 border: `1px solid ${fieldErrors.password ? 'var(--danger)' : 'var(--border-color)'}`,
                 borderRadius: '8px',
                 fontSize: '0.95rem',
@@ -211,43 +230,54 @@ const LoginPage = () => {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: '100%' }}
+            style={{ width: '100%', padding: '0.75rem' }}
             disabled={loading}
             id="btn-login-submit"
           >
-            {loading ? 'Authenticating...' : 'Sign In ➔'}
+            {loading ? 'Authenticating with Backend...' : 'Sign In ➔'}
           </button>
         </form>
 
-        {/* Practical Exam Demo Helpers */}
+        {/* Examination Testing Quick-Fill Panel */}
         <div style={{
-          marginTop: '1.75rem',
+          marginTop: '2rem',
           paddingTop: '1.25rem',
           borderTop: '1px solid var(--border-color)',
           fontSize: '0.82rem',
           color: 'var(--text-muted)'
         }}>
-          <div style={{ fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-main)' }}>
-            Exam Quick-Fill (Test Credentials):
+          <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-main)' }}>
+            🧪 Quick-Fill Test Credentials by Role:
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button
               type="button"
               className="btn btn-outline btn-sm"
               onClick={() => handleQuickFill('customer')}
-              style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}
+              style={{ fontSize: '0.76rem', padding: '0.3rem 0.6rem' }}
             >
-              👤 Customer Account
+              👤 Customer
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => handleQuickFill('fleet_manager')}
+              style={{ fontSize: '0.76rem', padding: '0.3rem 0.6rem' }}
+            >
+              🚙 Fleet Manager
             </button>
             <button
               type="button"
               className="btn btn-outline btn-sm"
               onClick={() => handleQuickFill('admin')}
-              style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem' }}
+              style={{ fontSize: '0.76rem', padding: '0.3rem 0.6rem' }}
             >
-              🛡️ Admin Account
+              🛡️ Administrator
             </button>
           </div>
+          <p style={{ marginTop: '0.65rem', fontSize: '0.75rem', color: 'var(--text-light)' }}>
+            Each button loads valid registered credentials verified by the backend API.
+          </p>
         </div>
       </div>
     </div>
