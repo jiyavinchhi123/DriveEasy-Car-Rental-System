@@ -1,21 +1,22 @@
 const mongoose = require('mongoose');
 
 /**
- * Vehicle Schema
+ * Vehicle Mongoose Model
+ * Represents rental fleet vehicles.
  */
 const vehicleSchema = new mongoose.Schema(
   {
     model: {
       type: String,
-      required: [true, 'Vehicle model name is required'],
+      required: [true, 'Vehicle model is required'],
       trim: true
     },
     type: {
       type: String,
-      required: [true, 'Vehicle category type is required'],
+      required: [true, 'Vehicle type category is required'],
       enum: {
         values: ['Hatchback', 'Sedan', 'SUV'],
-        message: '{VALUE} is not a supported vehicle category'
+        message: '{VALUE} is not a valid vehicle type (allowed: Hatchback, Sedan, SUV)'
       },
       trim: true
     },
@@ -30,15 +31,8 @@ const vehicleSchema = new mongoose.Schema(
     },
     registrationNumber: {
       type: String,
-      required: [true, 'Vehicle registration number is required'],
-      unique: true,
       trim: true,
       uppercase: true
-    },
-    fuelType: {
-      type: String,
-      enum: ['Petrol', 'Diesel', 'Electric', 'Hybrid'],
-      default: 'Petrol'
     }
   },
   {

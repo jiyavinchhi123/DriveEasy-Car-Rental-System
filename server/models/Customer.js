@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 /**
- * Customer / User Schema
+ * Customer Mongoose Model
+ * Represents registered users, customers, fleet managers, and administrators.
  */
 const customerSchema = new mongoose.Schema(
   {
@@ -19,22 +20,30 @@ const customerSchema = new mongoose.Schema(
       trim: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address']
     },
-    password: {
+    phone: {
       type: String,
-      required: [true, 'Password is required'],
-      minlength: [6, 'Password must be at least 6 characters']
+      required: [true, 'Contact phone number is required'],
+      trim: true
+    },
+    licenseNumber: {
+      type: String,
+      required: [true, 'Driving license number is required'],
+      unique: true,
+      trim: true,
+      uppercase: true
+    },
+    passwordHash: {
+      type: String,
+      required: [true, 'Password hash is required'],
+      select: false // Excluded from ordinary query results by default
     },
     role: {
       type: String,
       enum: {
-        values: ['customer', 'fleet_manager', 'admin'],
-        message: '{VALUE} is not a supported application role'
+        values: ['customer', 'fleetManager', 'fleet_manager', 'admin'],
+        message: '{VALUE} is not a supported role'
       },
       default: 'customer'
-    },
-    phone: {
-      type: String,
-      trim: true
     }
   },
   {
@@ -43,22 +52,16 @@ const customerSchema = new mongoose.Schema(
 );
 
 /**
- * Pre-save middleware to hash password with bcrypt if modified
+ * Compare submitted plaintext password with stored bcrypt passwordHash
+ * 
+ * @param {string} candidatePassword
+ * @returns {Promise<boolean>}
  */
-customerSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
-    return next();
+customerSchema.methods.matchPassword = async function (candidatePassword) {
+  if (!this.passwordHash) {
+    throw new Error('passwordHash field must be selected to perform password verification');
   }
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
-});
-
-/**
- * Instance method to compare submitted password against stored bcrypt hash
- */
-customerSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  return await bcrypt.compare(candidatePassword, this.passwordHash);
 };
 
 module.exports = mongoose.model('Customer', customerSchema);

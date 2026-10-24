@@ -1,7 +1,7 @@
-const { findVehicles, findVehicleById } = require('../services/dataService');
+const { Vehicle } = require('../models');
 
 /**
- * @desc    Get all vehicles with optional vehicle type filter
+ * @desc    Get all vehicles from MongoDB with optional category type filter
  * @route   GET /api/v1/vehicles
  * @access  Public
  */
@@ -9,7 +9,11 @@ const getVehicles = async (req, res, next) => {
   try {
     const { type } = req.query;
 
-    const vehicles = await findVehicles(type);
+    const query = type && type.toLowerCase() !== 'all'
+      ? { type: new RegExp(`^${type.trim()}$`, 'i') }
+      : {};
+
+    const vehicles = await Vehicle.find(query).sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -23,13 +27,13 @@ const getVehicles = async (req, res, next) => {
 };
 
 /**
- * @desc    Get single vehicle by ID
+ * @desc    Get single vehicle by MongoDB ObjectId
  * @route   GET /api/v1/vehicles/:id
  * @access  Public
  */
 const getVehicleById = async (req, res, next) => {
   try {
-    const vehicle = await findVehicleById(req.params.id);
+    const vehicle = await Vehicle.findById(req.params.id);
 
     if (!vehicle) {
       return res.status(404).json({

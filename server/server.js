@@ -17,9 +17,10 @@ connectDB().then(() => {
 // Start HTTP Server
 const server = app.listen(PORT, () => {
   console.log('=============================================================');
-  console.log('   DriveEasy Car Rental System - Backend Server (Stage 4)   ');
+  console.log('   DriveEasy Car Rental System - Backend Server (Stage 5)   ');
   console.log(`   Port:         ${PORT}                                     `);
   console.log(`   Environment:  ${process.env.NODE_ENV || 'development'}   `);
+  console.log(`   Database:     MongoDB (Mongoose Connected)                `);
   console.log(`   Base URL:     http://localhost:${PORT}                    `);
   console.log(`   API v1 Index: http://localhost:${PORT}/api/v1             `);
   console.log(`   Health Check: http://localhost:${PORT}/api/v1/health      `);
