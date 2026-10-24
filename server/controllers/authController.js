@@ -1,107 +1,104 @@
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const { findCustomerByEmail } = require('../services/dataService');
 
 /**
- * Predefined accounts supporting the 3 required application roles
- * (Customer, Fleet Manager, Admin) for ITUE301 practical examination
- */
-const SEED_USERS = [
-  {
-    id: 'usr_cust_001',
-    name: 'Rahul Sharma (Customer)',
-    email: 'customer@driveeasy.com',
-    password: 'customer123',
-    role: 'customer'
-  },
-  {
-    id: 'usr_mgr_002',
-    name: 'Priya Patel (Fleet Manager)',
-    email: 'manager@driveeasy.com',
-    password: 'manager123',
-    role: 'fleet_manager'
-  },
-  {
-    id: 'usr_adm_003',
-    name: 'System Administrator',
-    email: 'admin@driveeasy.com',
-    password: 'admin123',
-    role: 'admin'
-  }
-];
-
-/**
- * @desc    Authenticate customer/admin & generate JWT token
+ * @desc    Authenticate customer and issue signed JWT token
  * @route   POST /api/v1/auth/login
  * @access  Public
  */
-const login = async (req, res) => {
-  const { email, password } = req.body;
+const login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
 
-  // Validate required fields
-  if (!email || !password) {
-    return res.status(400).json({
-      success: false,
-      message: 'Please provide both email address and password.'
-    });
-  }
-
-  // Look up registered user
-  const user = SEED_USERS.find(
-    (u) => u.email.toLowerCase() === email.trim().toLowerCase()
-  );
-
-  // Strictly verify credentials (never accept arbitrary passwords)
-  if (!user || user.password !== password) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid credentials: Email or password does not match our records.'
-    });
-  }
-
-  // Generate genuine JWT token signed with secret
-  const secret = process.env.JWT_SECRET || 'driveeasy_super_secret_jwt_key_cspit_charusat';
-  const tokenPayload = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role
-  };
-
-  const token = jwt.sign(tokenPayload, secret, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-  });
-
-  // Return authenticated customer identity and token
-  res.status(200).json({
-    success: true,
-    message: `Authentication successful. Welcome, ${user.name}!`,
-    data: {
-      customer: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      },
-      token
+    // 1. Validate submitted request data
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request: Email and password are both required.'
+      });
     }
-  });
+
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request data types provided for email or password.'
+      });
+    }
+
+    // 2. Query real Customer record
+    const customer = await findCustomerByEmail(email);
+
+    if (!customer) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication failed: Invalid email or password.'
+      });
+    }
+
+    // 3. Authenticate against securely stored bcrypt password hash
+    const isPasswordValid = await bcrypt.compare(password, customer.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication failed: Invalid email or password.'
+      });
+    }
+
+    // 4. Generate signed JWT token
+    const secret = process.env.JWT_SECRET || 'driveeasy_super_secret_jwt_key_cspit_charusat';
+    const customerId = customer._id ? customer._id.toString() : customer.id;
+
+    const tokenPayload = {
+      id: customerId,
+      name: customer.name,
+      email: customer.email,
+      role: customer.role
+    };
+
+    const token = jwt.sign(tokenPayload, secret, {
+      expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    });
+
+    // 5. Return safe customer details (Never return the password or password hash)
+    res.status(200).json({
+      success: true,
+      message: `Authentication successful. Welcome, ${customer.name}!`,
+      data: {
+        customer: {
+          id: customerId,
+          name: customer.name,
+          email: customer.email,
+          role: customer.role
+        },
+        token
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 /**
- * @desc    Get current authenticated user profile
+ * @desc    Get currently authenticated customer profile
  * @route   GET /api/v1/auth/me
- * @access  Private (Bearer token required)
+ * @access  Private (authGuard)
  */
-const getMe = async (req, res) => {
-  res.status(200).json({
-    success: true,
-    data: {
-      customer: req.customer
-    }
-  });
+const getMe = async (req, res, next) => {
+  try {
+    res.status(200).json({
+      success: true,
+      data: {
+        customer: req.user
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 module.exports = {
   login,
-  getMe,
-  SEED_USERS
+  getMe
 };
