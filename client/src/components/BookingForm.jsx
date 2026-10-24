@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
+import { createBookingApi } from '../services/bookingService';
 
 /**
  * BookingForm Component
- * Reusable booking reservation form handling vehicle selection, pickup/return dates,
- * dynamic duration calculation, and validation.
+ * Controlled vehicle reservation form sending real POST /api/v1/bookings requests.
  * 
- * @param {object} selectedVehicle - Selected vehicle data { model, type, pricePerDay }
- * @param {string} pickupDate - Current pickup date state (YYYY-MM-DD)
- * @param {string} returnDate - Current return date state (YYYY-MM-DD)
+ * @param {object} selectedVehicle - Selected vehicle from fleet { _id, model, type, pricePerDay, available }
+ * @param {string} pickupDate - Controlled pickup date state (YYYY-MM-DD)
+ * @param {string} returnDate - Controlled return date state (YYYY-MM-DD)
  * @param {function} onPickupDateChange - Callback for updating pickup date
  * @param {function} onReturnDateChange - Callback for updating return date
- * @param {function} onSubmit - Callback when booking reservation is confirmed
- * @param {function} onCancel - Optional callback to cancel selection
+ * @param {function} onBookingSuccess - Callback to refresh fleet after successful booking
+ * @param {function} onCancel - Callback to clear selected vehicle
  */
 const BookingForm = ({
   selectedVehicle,
@@ -19,11 +19,12 @@ const BookingForm = ({
   returnDate,
   onPickupDateChange,
   onReturnDateChange,
-  onSubmit,
+  onBookingSuccess,
   onCancel
 }) => {
   const [formError, setFormError] = useState('');
-  const [submittedSuccess, setSubmittedSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   // Calculate rental duration in days
   const calculateDays = () => {
@@ -38,17 +39,25 @@ const BookingForm = ({
   const days = calculateDays();
   const totalPrice = selectedVehicle ? days * Number(selectedVehicle.pricePerDay || 0) : 0;
 
-  // Handle form submission with date validation
-  const handleSubmit = (e) => {
+  // Handle form submission
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
-    setSubmittedSuccess(false);
+    setSuccessMessage('');
 
+    // 1. Validate vehicle selection
     if (!selectedVehicle) {
-      setFormError('Please select a vehicle from the fleet first.');
+      setFormError('Please select a vehicle from the fleet below before submitting.');
       return;
     }
 
+    // 2. Validate availability flag (client check, backend is final authority)
+    if (!selectedVehicle.available) {
+      setFormError(`'${selectedVehicle.model}' is currently unavailable for booking.`);
+      return;
+    }
+
+    // 3. Validate required dates
     if (!pickupDate || !returnDate) {
       setFormError('Both pickup date and return date are required.');
       return;
@@ -57,25 +66,47 @@ const BookingForm = ({
     const start = new Date(pickupDate);
     const end = new Date(returnDate);
 
+    // 4. Validate returnDate > pickupDate
     if (end <= start) {
-      setFormError('Return date must be at least one day after the pickup date.');
+      setFormError('Return date must be strictly later than pickup date.');
       return;
     }
 
-    const bookingPayload = {
-      vehicle: selectedVehicle,
-      pickupDate,
-      returnDate,
-      days,
-      totalPrice,
-      status: 'Confirmed'
-    };
+    setSubmitting(true);
 
-    if (onSubmit) {
-      onSubmit(bookingPayload);
+    try {
+      const vehicleId = selectedVehicle._id || selectedVehicle.id;
+
+      // Submit POST /api/v1/bookings with JWT Bearer token
+      const result = await createBookingApi({
+        vehicleId,
+        pickupDate,
+        returnDate
+      });
+
+      if (!result.success) {
+        setFormError(result.error || 'Failed to create booking. Please check dates or try another car.');
+        setSubmitting(false);
+        return;
+      }
+
+      setSuccessMessage(`Booking confirmed for ${selectedVehicle.model}! Reservation ID: #${result.data?._id || 'Success'}`);
+
+      // Notify parent to refresh fleet availability from real API
+      if (onBookingSuccess) {
+        onBookingSuccess(result.data);
+      }
+
+      // Reset form after 2 seconds
+      setTimeout(() => {
+        if (onCancel) onCancel();
+        setSuccessMessage('');
+      }, 2500);
+    } catch (err) {
+      setFormError('Network communication error with backend bookings service.');
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmittedSuccess(true);
   };
 
   const today = new Date().toISOString().split('T')[0];
@@ -85,15 +116,16 @@ const BookingForm = ({
       <div className="card-header">
         <div>
           <h3>Reserve Your Vehicle</h3>
-          <p style={{ fontSize: '0.85rem' }}>Select dates to calculate instant price estimate</p>
+          <p style={{ fontSize: '0.85rem' }}>Select dates to calculate instant price estimate and submit booking</p>
         </div>
         {selectedVehicle && (
-          <span className="badge badge-primary">
-            Vehicle Selected
+          <span className={`badge ${selectedVehicle.available ? 'badge-primary' : 'badge-danger'}`}>
+            {selectedVehicle.available ? 'Vehicle Selected' : 'Selected (Unavailable)'}
           </span>
         )}
       </div>
 
+      {/* Error feedback */}
       {formError && (
         <div style={{
           background: '#fef2f2',
@@ -108,7 +140,8 @@ const BookingForm = ({
         </div>
       )}
 
-      {submittedSuccess && (
+      {/* Success feedback */}
+      {successMessage && (
         <div style={{
           background: '#ecfdf5',
           border: '1px solid #a7f3d0',
@@ -118,7 +151,7 @@ const BookingForm = ({
           marginBottom: '1rem',
           fontSize: '0.88rem'
         }}>
-          ✅ Reservation request captured! Booking will be processed in Stage 4.
+          ✅ {successMessage}
         </div>
       )}
 
@@ -145,6 +178,11 @@ const BookingForm = ({
                 <span style={{ marginLeft: '0.5rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                   ({selectedVehicle.type})
                 </span>
+                {!selectedVehicle.available && (
+                  <span className="badge badge-danger" style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}>
+                    Unavailable
+                  </span>
+                )}
               </div>
               <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>
                 ₹{selectedVehicle.pricePerDay} <span style={{ fontSize: '0.8rem', fontWeight: 400 }}>/day</span>
@@ -184,6 +222,7 @@ const BookingForm = ({
               min={today}
               value={pickupDate}
               onChange={(e) => onPickupDateChange(e.target.value)}
+              disabled={submitting}
               required
               style={{
                 width: '100%',
@@ -209,6 +248,7 @@ const BookingForm = ({
               min={pickupDate || today}
               value={returnDate}
               onChange={(e) => onReturnDateChange(e.target.value)}
+              disabled={submitting}
               required
               style={{
                 width: '100%',
@@ -222,7 +262,7 @@ const BookingForm = ({
           </div>
         </div>
 
-        {/* Real-time State & Price Summary */}
+        {/* Price & Duration Summary */}
         <div style={{
           background: 'var(--bg-main)',
           padding: '1rem',
@@ -241,13 +281,14 @@ const BookingForm = ({
           </div>
         </div>
 
-        {/* Actions */}
+        {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           {selectedVehicle && onCancel && (
             <button
               type="button"
               className="btn btn-outline btn-sm"
               onClick={onCancel}
+              disabled={submitting}
             >
               Clear Selection
             </button>
@@ -255,10 +296,10 @@ const BookingForm = ({
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={!selectedVehicle || !pickupDate || !returnDate}
+            disabled={!selectedVehicle || !selectedVehicle.available || !pickupDate || !returnDate || submitting}
             id="btn-confirm-booking"
           >
-            Confirm Reservation
+            {submitting ? 'Submitting to Backend...' : 'Confirm Reservation ➔'}
           </button>
         </div>
       </form>

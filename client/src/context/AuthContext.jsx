@@ -43,6 +43,15 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
+
+    // Automatically clear state if an API request returns 401 Unauthorized
+    const handleUnauthorized = () => {
+      setCustomer(null);
+      setToken(null);
+    };
+
+    window.addEventListener('driveeasy:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('driveeasy:unauthorized', handleUnauthorized);
   }, []);
 
   /**

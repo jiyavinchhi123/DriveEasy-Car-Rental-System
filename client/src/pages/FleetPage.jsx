@@ -3,110 +3,89 @@ import VehicleCard from '../components/VehicleCard';
 import BookingForm from '../components/BookingForm';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
-import { apiRequest } from '../services/api';
-
-/**
- * Initial dataset preparing the fleet for live API data in Stage 3
- */
-const INITIAL_FLEET = [
-  { id: '1', model: 'Maruti Suzuki Swift', type: 'Hatchback', pricePerDay: 1800, available: true },
-  { id: '2', model: 'Hyundai i20 Asta', type: 'Hatchback', pricePerDay: 2000, available: true },
-  { id: '3', model: 'Honda City ZX', type: 'Sedan', pricePerDay: 2800, available: true },
-  { id: '4', model: 'Hyundai Verna SX', type: 'Sedan', pricePerDay: 2700, available: false },
-  { id: '5', model: 'Mahindra Scorpio-N', type: 'SUV', pricePerDay: 3500, available: true },
-  { id: '6', model: 'Tata Harrier XZA', type: 'SUV', pricePerDay: 3800, available: true },
-  { id: '7', model: 'Toyota Fortuner 4x4', type: 'SUV', pricePerDay: 5200, available: false },
-  { id: '8', model: 'Tata Tiago EV', type: 'Hatchback', pricePerDay: 2200, available: true }
-];
+import { fetchVehicles } from '../services/vehicleService';
 
 /**
  * FleetPage Component
- * Manages vehicle fleet filtering, selection state, date management,
- * and passes props seamlessly to VehicleCard and BookingForm.
+ * Fetches real vehicle fleet from backend GET /api/v1/vehicles on mount.
+ * Implements client-side filtering (.filter()) without re-fetching,
+ * and refreshes fleet state when a reservation is confirmed.
  */
 const FleetPage = () => {
-  // Vehicle data & API state
+  // Required states
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Filter state: 'All', 'Hatchback', 'Sedan', 'SUV'
+  // Client-side filter state: 'All', 'Hatchback', 'Sedan', 'SUV'
   const [activeFilter, setActiveFilter] = useState('All');
 
-  // Booking Form state
+  // Controlled booking form state
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
-  const [lastConfirmedBooking, setLastConfirmedBooking] = useState(null);
 
   /**
-   * Fetch vehicles from backend API or gracefully fall back to initialized fleet
-   * Prepares the component for live API integration without breaking Stage 2 testing
+   * Fetch vehicles from real Express/MongoDB API: GET /api/v1/vehicles
    */
   const loadFleet = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const res = await apiRequest('/cars');
-      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-        setVehicles(res.data);
+      const result = await fetchVehicles();
+
+      if (!result.success) {
+        setError(result.error || 'Failed to retrieve vehicles from the backend server.');
+        setVehicles([]);
       } else {
-        // Use initialized vehicle dataset when /cars endpoint is pending in Stage 3
-        setVehicles(INITIAL_FLEET);
+        const fleetData = Array.isArray(result.data) ? result.data : [];
+        setVehicles(fleetData);
       }
     } catch (err) {
-      // Graceful fallback to initial fleet for frontend-only verification
-      setVehicles(INITIAL_FLEET);
+      setError('Unable to reach the backend vehicle API. Ensure server is running on port 5000.');
+      setVehicles([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch on component mount
   useEffect(() => {
     loadFleet();
   }, []);
 
-  // Handle vehicle selection when "Book Now" is clicked on a VehicleCard
-  const handleVehicleSelect = (vehicle) => {
+  // Handle vehicle selection when user clicks "Book Now" on a VehicleCard
+  const handleSelectVehicle = (vehicle) => {
     setSelectedVehicle(vehicle);
-    // Smooth scroll up to the booking form
     window.scrollTo({ top: 120, behavior: 'smooth' });
   };
 
-  // Handle confirmed booking from BookingForm
-  const handleBookingSubmit = (bookingData) => {
-    setLastConfirmedBooking(bookingData);
-    // Optionally save to local storage for My Bookings preview
-    try {
-      const existing = JSON.parse(localStorage.getItem('driveeasy_bookings') || '[]');
-      existing.unshift({
-        id: `BK-${Date.now()}`,
-        ...bookingData
-      });
-      localStorage.setItem('driveeasy_bookings', JSON.stringify(existing));
-    } catch (e) {
-      console.warn('Could not store booking locally:', e);
-    }
+  // Callback when a booking is created successfully -> refresh fleet availability from API
+  const handleBookingSuccess = () => {
+    loadFleet();
+    setSelectedVehicle(null);
+    setPickupDate('');
+    setReturnDate('');
   };
 
-  // Filter fleet based on selected vehicle-type tab
+  // Client-side filtering with .filter() without triggering additional API calls
   const filterCategories = ['All', 'Hatchback', 'Sedan', 'SUV'];
   const filteredVehicles = activeFilter === 'All'
     ? vehicles
-    : vehicles.filter((v) => v.type.toLowerCase() === activeFilter.toLowerCase());
+    : vehicles.filter((v) => v.type && v.type.toLowerCase() === activeFilter.toLowerCase());
 
   return (
     <div className="fleet-page">
-      {/* Header section */}
+      {/* Page Header */}
       <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-        <h2>Explore Our Fleet</h2>
-        <p style={{ maxWidth: '600px', margin: '0.4rem auto 0' }}>
-          Choose from our selection of premium hatchbacks, sedans, and SUVs. Select your vehicle to reserve instantly.
+        <h2>Available Vehicle Fleet</h2>
+        <p style={{ maxWidth: '650px', margin: '0.4rem auto 0' }}>
+          Select a vehicle from our real-time inventory to reserve your rental.
         </p>
       </div>
 
-      {/* Booking Form with live state inspection */}
+      {/* Booking Form Component */}
       <div style={{ marginBottom: '3rem' }}>
         <BookingForm
           selectedVehicle={selectedVehicle}
@@ -114,12 +93,12 @@ const FleetPage = () => {
           returnDate={returnDate}
           onPickupDateChange={setPickupDate}
           onReturnDateChange={setReturnDate}
-          onSubmit={handleBookingSubmit}
+          onBookingSuccess={handleBookingSuccess}
           onCancel={() => setSelectedVehicle(null)}
         />
       </div>
 
-      {/* Live State Inspector Banner (Viva Friendly) */}
+      {/* Live State Inspector Banner */}
       <div style={{
         background: '#ffffff',
         border: '1px solid var(--border-color)',
@@ -135,24 +114,20 @@ const FleetPage = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ fontSize: '1.1rem' }}>📌</span>
           <span style={{ fontSize: '0.88rem', color: 'var(--text-muted)' }}>
-            Active State:
+            Selection:
           </span>
           <strong style={{ fontSize: '0.9rem', color: selectedVehicle ? 'var(--primary)' : 'var(--text-muted)' }}>
-            {selectedVehicle ? `Selected: ${selectedVehicle.model} (₹${selectedVehicle.pricePerDay}/day)` : 'No Vehicle Selected'}
+            {selectedVehicle ? `${selectedVehicle.model} (${selectedVehicle.type} • ₹${selectedVehicle.pricePerDay}/day)` : 'No Vehicle Selected'}
           </strong>
         </div>
 
         <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.85rem' }}>
-          <span>
-            Pickup: <strong>{pickupDate || 'Not Chosen'}</strong>
-          </span>
-          <span>
-            Return: <strong>{returnDate || 'Not Chosen'}</strong>
-          </span>
+          <span>Pickup: <strong>{pickupDate || 'Not Chosen'}</strong></span>
+          <span>Return: <strong>{returnDate || 'Not Chosen'}</strong></span>
         </div>
       </div>
 
-      {/* Vehicle-Type Filter Tabs: All, Hatchback, Sedan, SUV */}
+      {/* Client-Side Category Filter Tabs */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -176,40 +151,58 @@ const FleetPage = () => {
           ))}
         </div>
 
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          Showing <strong>{filteredVehicles.length}</strong> vehicle{filteredVehicles.length === 1 ? '' : 's'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Filter: <strong>{activeFilter}</strong> ({filteredVehicles.length} of {vehicles.length} vehicles)
+          </span>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={loadFleet}
+            title="Refresh fleet from database"
+          >
+            🔄 Refresh Fleet
+          </button>
+        </div>
       </div>
 
-      {/* Error state */}
+      {/* Error State */}
       {error && (
         <ErrorMessage message={error} onRetry={loadFleet} />
       )}
 
-      {/* Loading state */}
+      {/* Loading State */}
       {loading ? (
         <Loading message="Loading fleet vehicles from database..." />
       ) : filteredVehicles.length === 0 ? (
+        /* Empty State */
         <div style={{
           textAlign: 'center',
-          padding: '3rem',
+          padding: '3rem 1.5rem',
           background: '#ffffff',
           borderRadius: '12px',
-          border: '1px dashed var(--border-color)'
+          border: '1px dashed var(--border-color)',
+          marginTop: '1rem'
         }}>
-          <h3>No vehicles found in this category</h3>
-          <p style={{ marginTop: '0.5rem' }}>Try choosing another vehicle type or reset filters.</p>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => setActiveFilter('All')}
-            style={{ marginTop: '1rem' }}
-          >
-            Show All Vehicles
-          </button>
+          <h3>No Vehicles Available</h3>
+          <p style={{ marginTop: '0.5rem', color: 'var(--text-muted)' }}>
+            {vehicles.length === 0
+              ? 'No vehicles currently exist in the database. Please run npm run seed in the server.'
+              : `No vehicles found in the '${activeFilter}' category. Try switching filters.`}
+          </p>
+          {activeFilter !== 'All' && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setActiveFilter('All')}
+              style={{ marginTop: '1rem' }}
+            >
+              Reset to All Vehicles
+            </button>
+          )}
         </div>
       ) : (
-        /* Responsive Grid of Reusable VehicleCard Components */
+        /* Responsive Grid of VehicleCard Components from real API response */
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
@@ -217,12 +210,12 @@ const FleetPage = () => {
         }}>
           {filteredVehicles.map((vehicle) => (
             <VehicleCard
-              key={vehicle.id || vehicle._id || vehicle.model}
+              key={vehicle._id || vehicle.id}
               model={vehicle.model}
               type={vehicle.type}
               pricePerDay={vehicle.pricePerDay}
               available={vehicle.available}
-              onBook={() => handleVehicleSelect(vehicle)}
+              onBook={() => handleSelectVehicle(vehicle)}
             />
           ))}
         </div>

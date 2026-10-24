@@ -266,8 +266,31 @@ const updateBookingStatusById = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get all bookings across all customers (Admin / Fleet Manager only)
+ * @route   GET /api/v1/bookings
+ * @access  Private (authGuard + roleGuard)
+ */
+const getAllBookings = async (req, res, next) => {
+  try {
+    const bookings = await Booking.find()
+      .populate('customerId', 'name email phone licenseNumber')
+      .populate('vehicleId', 'model type pricePerDay registrationNumber')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: bookings.length,
+      data: bookings
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createNewBooking,
   getMyBookings,
-  updateBookingStatusById
+  updateBookingStatusById,
+  getAllBookings
 };

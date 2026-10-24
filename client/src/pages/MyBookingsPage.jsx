@@ -2,114 +2,102 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
-import { apiRequest } from '../services/api';
-
-/**
- * Initial sample bookings for demonstration during practical evaluation
- */
-const INITIAL_BOOKINGS = [
-  {
-    id: 'BK-1001',
-    vehicle: { model: 'Honda City ZX', type: 'Sedan', pricePerDay: 2800 },
-    pickupDate: '2026-11-01',
-    returnDate: '2026-11-04',
-    days: 3,
-    totalPrice: 8400,
-    status: 'Confirmed'
-  },
-  {
-    id: 'BK-1002',
-    vehicle: { model: 'Mahindra Scorpio-N', type: 'SUV', pricePerDay: 3500 },
-    pickupDate: '2026-11-10',
-    returnDate: '2026-11-12',
-    days: 2,
-    totalPrice: 7000,
-    status: 'Pending'
-  },
-  {
-    id: 'BK-0994',
-    vehicle: { model: 'Maruti Suzuki Swift', type: 'Hatchback', pricePerDay: 1800 },
-    pickupDate: '2026-10-15',
-    returnDate: '2026-10-17',
-    days: 2,
-    totalPrice: 3600,
-    status: 'Completed'
-  }
-];
+import { fetchMyBookingsApi, updateBookingStatusApi } from '../services/bookingService';
 
 /**
  * MyBookingsPage Component
- * Displays user's vehicle reservations with loading, empty, and error states.
- * Prepared for live API retrieval in Stage 4.
+ * Fetches real customer bookings from GET /api/v1/bookings/my using authenticated token.
+ * Renders populated vehicle details, date formatting, and handles loading/error/empty states.
  */
 const MyBookingsPage = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actionMessage, setActionMessage] = useState('');
 
   /**
-   * Fetch bookings from backend API or sync with local storage / demo state
+   * Fetch customer bookings from backend API
    */
-  const fetchBookings = async () => {
+  const loadBookings = async () => {
     setLoading(true);
     setError(null);
+    setActionMessage('');
 
     try {
-      // Attempt backend API call
-      const res = await apiRequest('/rentals/my-bookings');
+      const result = await fetchMyBookingsApi();
 
-      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-        setBookings(res.data);
+      if (!result.success) {
+        setError(result.error || 'Failed to fetch your bookings from the server.');
+        setBookings([]);
       } else {
-        // Retrieve any bookings stored from the BookingForm in localStorage
-        const localData = JSON.parse(localStorage.getItem('driveeasy_bookings') || '[]');
-        if (localData.length > 0) {
-          setBookings([...localData, ...INITIAL_BOOKINGS]);
-        } else {
-          setBookings(INITIAL_BOOKINGS);
-        }
+        const bookingsList = Array.isArray(result.data) ? result.data : [];
+        setBookings(bookingsList);
       }
     } catch (err) {
-      // Graceful fallback to maintain functional viva presentation
-      const localData = JSON.parse(localStorage.getItem('driveeasy_bookings') || '[]');
-      setBookings(localData.length > 0 ? localData : INITIAL_BOOKINGS);
+      setError('Unable to communicate with the bookings service.');
+      setBookings([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchBookings();
+    loadBookings();
   }, []);
 
-  // Status badge styling helper
-  const renderStatusBadge = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'confirmed':
-        return <span className="badge badge-success">● Confirmed</span>;
-      case 'pending':
-        return <span className="badge badge-warning">● Pending Approval</span>;
-      case 'completed':
-        return <span className="badge badge-primary">● Completed</span>;
-      case 'cancelled':
-        return <span className="badge badge-danger">● Cancelled</span>;
-      default:
-        return <span className="badge badge-primary">{status}</span>;
+  // Format date string to readable locale date (e.g. "Nov 1, 2026")
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return dateStr;
     }
   };
 
-  // Helper to cancel a booking in local state
-  const handleCancelBooking = (bookingId) => {
-    if (window.confirm(`Are you sure you want to cancel booking #${bookingId}?`)) {
-      setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status: 'Cancelled' } : b))
-      );
+  // Status badge styling
+  const renderStatusBadge = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'reserved':
+        return <span className="badge badge-primary">● Reserved</span>;
+      case 'ongoing':
+        return <span className="badge badge-warning">● Ongoing Trip</span>;
+      case 'completed':
+        return <span className="badge badge-success">● Completed</span>;
+      case 'cancelled':
+        return <span className="badge badge-danger">● Cancelled</span>;
+      default:
+        return <span className="badge badge-outline">{status}</span>;
+    }
+  };
+
+  // Cancel customer's reservation via PATCH /api/v1/bookings/:id/status
+  const handleCancelBooking = async (bookingId) => {
+    if (!window.confirm('Are you sure you want to cancel this vehicle reservation?')) {
+      return;
+    }
+
+    try {
+      const res = await updateBookingStatusApi(bookingId, 'cancelled');
+      if (res.success) {
+        setActionMessage('Booking was successfully cancelled and the vehicle has been released.');
+        loadBookings();
+      } else {
+        alert(res.error || 'Could not cancel booking.');
+      }
+    } catch (err) {
+      alert('An error occurred while communicating with the server.');
     }
   };
 
   return (
     <div className="my-bookings-page">
-      {/* Header section */}
+      {/* Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -119,18 +107,20 @@ const MyBookingsPage = () => {
         marginBottom: '2rem'
       }}>
         <div>
-          <h2>My Bookings</h2>
+          <h2>My Reservations</h2>
           <p style={{ marginTop: '0.25rem' }}>
-            Review and track your car rental reservations
+            Track and manage your vehicle rentals (Live MongoDB Records)
           </p>
         </div>
+
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             type="button"
             className="btn btn-outline btn-sm"
-            onClick={fetchBookings}
+            onClick={loadBookings}
+            disabled={loading}
           >
-            🔄 Refresh
+            🔄 Refresh Bookings
           </button>
           <Link to="/fleet" className="btn btn-primary btn-sm">
             + New Booking
@@ -138,41 +128,60 @@ const MyBookingsPage = () => {
         </div>
       </div>
 
+      {/* Action Feedback Banner */}
+      {actionMessage && (
+        <div style={{
+          background: '#ecfdf5',
+          border: '1px solid #a7f3d0',
+          color: '#065f46',
+          padding: '0.75rem 1rem',
+          borderRadius: '8px',
+          marginBottom: '1.5rem',
+          fontSize: '0.9rem'
+        }}>
+          ✅ {actionMessage}
+        </div>
+      )}
+
       {/* Error state */}
       {error && (
-        <ErrorMessage message={error} onRetry={fetchBookings} />
+        <ErrorMessage message={error} onRetry={loadBookings} />
       )}
 
       {/* Loading state */}
       {loading ? (
-        <Loading message="Loading your bookings from the database..." />
+        <Loading message="Loading your bookings from database..." />
       ) : bookings.length === 0 ? (
         /* Empty state */
         <div className="card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
           <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚗</div>
           <h3>No Bookings Found</h3>
-          <p style={{ maxWidth: '450px', margin: '0.5rem auto 1.5rem' }}>
-            You haven't reserved any vehicles yet. Check out our available fleet to make your first reservation.
+          <p style={{ maxWidth: '480px', margin: '0.5rem auto 1.5rem', color: 'var(--text-muted)' }}>
+            You haven't reserved any vehicles yet. Explore our available fleet to make your first reservation.
           </p>
           <Link to="/fleet" className="btn btn-primary">
-            Explore Available Fleet ➔
+            Browse Available Fleet ➔
           </Link>
         </div>
       ) : (
-        /* Booking list layout */
+        /* Real Bookings List */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {bookings.map((booking) => (
             <div
-              key={booking.id}
+              key={booking._id || booking.id}
               className="card"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '1rem',
-                borderLeft: booking.status === 'Cancelled' ? '4px solid var(--danger)' : '4px solid var(--primary)'
+                borderLeft: booking.status === 'cancelled'
+                  ? '4px solid var(--danger)'
+                  : booking.status === 'completed'
+                  ? '4px solid var(--success)'
+                  : '4px solid var(--primary)'
               }}
             >
-              {/* Top row: Booking ID & Status */}
+              {/* Top row: Reservation ID & Status */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -183,82 +192,75 @@ const MyBookingsPage = () => {
                 borderBottom: '1px solid var(--border-color)'
               }}>
                 <div>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Booking ID:</span>{' '}
-                  <strong style={{ fontSize: '0.95rem' }}>#{booking.id}</strong>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Reservation ID:</span>{' '}
+                  <strong style={{ fontSize: '0.92rem', fontFamily: 'monospace' }}>
+                    #{booking._id}
+                  </strong>
                 </div>
                 <div>{renderStatusBadge(booking.status)}</div>
               </div>
 
-              {/* Middle row: Vehicle, Dates, Total */}
+              {/* Middle row: Populated vehicle & date details */}
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
                 gap: '1.25rem',
                 alignItems: 'center'
               }}>
-                {/* Vehicle Details */}
+                {/* Populated Vehicle Details */}
                 <div>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block' }}>
-                    Vehicle
+                    Reserved Vehicle
                   </span>
                   <strong style={{ fontSize: '1.1rem', color: 'var(--text-main)' }}>
-                    {booking.vehicle?.model || 'DriveEasy Vehicle'}
+                    {booking.vehicleId?.model || 'DriveEasy Vehicle'}
                   </strong>
                   <span style={{ display: 'block', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    Type: {booking.vehicle?.type || 'Standard'}
+                    Category: {booking.vehicleId?.type || 'Standard'}
                   </span>
                 </div>
 
                 {/* Pickup Date */}
                 <div>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block' }}>
-                    Pickup Date
+                    📅 Pickup Date
                   </span>
                   <strong style={{ fontSize: '0.95rem' }}>
-                    📅 {booking.pickupDate}
+                    {formatDate(booking.pickupDate)}
                   </strong>
-                  <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Pickup at 10:00 AM
-                  </span>
                 </div>
 
                 {/* Return Date */}
                 <div>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block' }}>
-                    Return Date
+                    📅 Return Date
                   </span>
                   <strong style={{ fontSize: '0.95rem' }}>
-                    📅 {booking.returnDate}
+                    {formatDate(booking.returnDate)}
                   </strong>
-                  <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Return by 10:00 AM
-                  </span>
                 </div>
 
                 {/* Total Cost */}
                 <div>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block' }}>
-                    Total Estimated Amount
+                    Total Rental Cost
                   </span>
-                  <strong style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>
+                  <strong style={{ fontSize: '1.25rem', color: 'var(--primary)' }}>
                     ₹{booking.totalPrice?.toLocaleString() || '0'}
                   </strong>
-                  <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {booking.days ? `${booking.days} day(s)` : ''}
-                  </span>
                 </div>
               </div>
 
-              {/* Bottom row actions */}
-              {booking.status !== 'Cancelled' && booking.status !== 'Completed' && (
+              {/* Bottom row: Cancellation Action */}
+              {booking.status === 'reserved' && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
                   <button
                     type="button"
-                    onClick={() => handleCancelBooking(booking.id)}
+                    onClick={() => handleCancelBooking(booking._id)}
                     className="btn btn-outline btn-sm"
                     style={{ borderColor: '#fca5a5', color: '#b91c1c' }}
                   >
-                    Cancel Booking
+                    Cancel Reservation
                   </button>
                 </div>
               )}

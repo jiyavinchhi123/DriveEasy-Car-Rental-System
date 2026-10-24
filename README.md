@@ -2,176 +2,138 @@
 
 **Course:** ITUE301 Open-Book Practical Examination  
 **Institution:** CSPIT, CHARUSAT  
-**Development Stage:** Stage 5 — MongoDB Persistence with Mongoose, Transactional Bookings & Seeding  
+**Development Stage:** Stage 6 — Full-Stack Frontend & Backend Integration  
 **Architecture:** Full-Stack MERN (Node.js, Express, MongoDB, React, Vite)
 
 ---
 
 ## 📌 Project Overview
 
-**DriveEasy Car Rental System** is an end-to-end full-stack web application designed for vehicle fleet browsing and reservations.
-- The **Backend (Express + Node.js + Mongoose)** connects to MongoDB via Mongoose ODM, defines strict schemas with custom validators, encrypts passwords with `bcryptjs`, issues JWT Bearer tokens, guards endpoints, and uses database transactions with date-overlap detection to prevent double-bookings.
-- The **Frontend (React + Vite)** provides a component-driven SPA interface with React Router DOM, state management via React Context (`{ customer, token }`), session persistence via `localStorage`, route protection via `ProtectedRoute`, and lazy loading via `React.lazy` and `Suspense`.
+**DriveEasy Car Rental System** is an end-to-end full-stack MERN web application for vehicle browsing and reservations.
+- **Backend (Express + Node.js + Mongoose):** Real MongoDB models (`Customer`, `Vehicle`, `Booking`), bcrypt password hashing, JWT Bearer tokens, CORS origin checking, global request logger (`requestLogger`), date-overlap double-booking prevention, transactions, populated queries, and role guards (`authGuard`, `roleGuard`).
+- **Frontend (React 18 + Vite):** Component-driven SPA, React Router DOM, state management via React Context (`{ customer, token }`), session persistence via `localStorage`, route protection (`ProtectedRoute`), on-demand lazy loading (`React.lazy` + `Suspense`), and complete frontend-to-backend integration via dedicated service modules (`api.js`, `authService.js`, `vehicleService.js`, `bookingService.js`).
 
 ---
 
-## 🍃 Mongoose Schemas & Data Models
+## 🚀 How to Run the Applications
 
-### 1. Model: `Customer` (`models/Customer.js`)
-| Field | Type | Rules & Validation |
-|---|---|---|
-| `name` | `String` | Required, trimmed. |
-| `email` | `String` | Required, unique, trimmed, normalized to lowercase with regex format validation. |
-| `phone` | `String` | Required, trimmed. |
-| `licenseNumber` | `String` | Required, unique, trimmed, uppercase format. |
-| `passwordHash` | `String` | Required, `select: false` (excluded from query responses to prevent leaks). |
-| `role` | `String` | Enum: `['customer', 'fleetManager', 'admin']`, default: `'customer'`. |
-
-- **Instance Method:** `matchPassword(candidatePassword)` compares submitted plaintext password with stored bcrypt hash using `bcrypt.compare`.
-
----
-
-### 2. Model: `Vehicle` (`models/Vehicle.js`)
-| Field | Type | Rules & Validation |
-|---|---|---|
-| `model` | `String` | Required, trimmed (e.g. `"Honda City ZX"`). |
-| `type` | `String` | Required, enum: `['Hatchback', 'Sedan', 'SUV']`. |
-| `pricePerDay` | `Number` | Required, min: `0`. |
-| `available` | `Boolean` | Default: `true`. |
-| `registrationNumber` | `String` | Trimmed, unique, uppercase (e.g. `"GJ-23-EF-9012"`). |
-
----
-
-### 3. Model: `Booking` (`models/Booking.js`)
-| Field | Type | Rules & Validation |
-|---|---|---|
-| `customerId` | `ObjectId` | Ref: `Customer`, required. Derived strictly from `req.user.id`. |
-| `vehicleId` | `ObjectId` | Ref: `Vehicle`, required. |
-| `pickupDate` | `Date` | Required. |
-| `returnDate` | `Date` | Required, schema-level validator ensures `returnDate > pickupDate`. |
-| `totalPrice` | `Number` | Min: `0`. |
-| `status` | `String` | Enum: `['reserved', 'ongoing', 'completed', 'cancelled']`, default: `'reserved'`. |
-
----
-
-## 🚫 Double-Booking Prevention & Date Overlap Logic (Viva Explanation)
-
-### Why a Single `available` Boolean is Insufficient
-A single boolean `available: true/false` only describes whether a car is occupied **right this instant**. It cannot answer questions like:
-- *"Can Customer B rent this car next month if Customer A has it reserved today?"*
-- *"Can Customer C rent this car from Nov 1 to Nov 5 if Customer D rented it from Nov 10 to Nov 15?"*
-
-If a system relied solely on `Vehicle.available`, marking a car as rented today would block all future dates indefinitely; conversely, leaving it `true` for future dates would allow overlapping reservations.
-
-### Interval Overlap Mathematical Detection
-Two reservation date intervals `[P₁, R₁]` (existing booking) and `[P₂, R₂]` (new request) overlap if and only if:
-$$\text{Existing Pickup} < \text{New Return} \quad \text{AND} \quad \text{Existing Return} > \text{New Pickup}$$
-
-In DriveEasy, every booking request executes a query against MongoDB before creation:
-```javascript
-const activeStatuses = ['reserved', 'ongoing'];
-const overlappingBooking = await Booking.findOne({
-  vehicleId: vehicle._id,
-  status: { $in: activeStatuses },
-  pickupDate: { $lt: end },
-  returnDate: { $gt: start }
-});
-
-if (overlappingBooking) {
-  return res.status(400).json({
-    success: false,
-    message: `Vehicle '${vehicle.model}' is already booked for the selected date range.`
-  });
-}
-```
-
----
-
-## 🔄 Transactional Booking Creation & Fallback
-
-When reserving a vehicle, two operations must succeed atomically:
-1. Creating the `Booking` document.
-2. Setting `Vehicle.available = false`.
-
-DriveEasy employs **Mongoose Multi-Document Transactions**:
-```javascript
-const session = await mongoose.startSession();
-session.startTransaction();
-try {
-  const [newBooking] = await Booking.create([bookingData], { session });
-  await Vehicle.findByIdAndUpdate(vehicleId, { available: false }, { session });
-  await session.commitTransaction();
-} catch (err) {
-  await session.abortTransaction();
-} finally {
-  session.endSession();
-}
-```
-**Standalone Topology Fallback:** On standalone MongoDB deployments where multi-document replica set transactions are disabled, the controller executes a safe two-phase write with compensation rollback: if updating the vehicle fails, the newly inserted booking is immediately purged (`Booking.findByIdAndDelete`) before responding with an error, ensuring data consistency is maintained.
-
----
-
-## 🔄 Availability Management on Status Changes
-
-When a booking is cancelled or marked completed via `PATCH /api/v1/bookings/:id/status`:
-1. The status is updated to `'cancelled'` or `'completed'`.
-2. The controller inspects if there are any *other* active bookings (`'reserved'` or `'ongoing'`) for that vehicle.
-3. The vehicle's `available` field is restored to `true` **only if no other active reservations require it**.
-
----
-
-## 🧪 Database Seeding (`npm run seed`)
-
-The seed script creates realistic demo accounts with pre-hashed passwords using `bcryptjs`. It is built with **repeatable upsert operations** (`findOneAndUpdate` with `upsert: true`) so running it multiple times never creates duplicates:
-
+### 1. Database Seeding (Seed MongoDB with Demo Fleet & Users):
+Ensure your local MongoDB daemon is running on port 27017, then execute:
 ```bash
 cd driveeasy/server
 npm run seed
 ```
+> Populates 3 demonstration accounts (Customer, Fleet Manager, Admin) and 6 fleet vehicles with real bcrypt password hashes.
 
-### Seed Demonstration Accounts:
-| Role | Email | Password | Phone | License Number |
-|---|---|---|---|---|
-| **Customer** | `customer@driveeasy.com` | `customer123` | `+91 9876543210` | `DL-GJ06-20210001` |
-| **Fleet Manager** | `manager@driveeasy.com` | `manager123` | `+91 9876543211` | `DL-GJ06-20180002` |
-| **Administrator** | `admin@driveeasy.com` | `admin123` | `+91 9876543212` | `DL-GJ06-20150003` |
-
----
-
-## 📡 REST API Endpoints Specification
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/login` | Public | Validates credentials against real MongoDB Customer record and bcrypt `passwordHash`. |
-| `GET` | `/api/v1/vehicles` | Public | Retrieves fleet vehicles with optional `?type=SUV` filtering. |
-| `POST` | `/api/v1/bookings` | `authGuard` | Creates booking with date-overlap prevention, transaction, and vehicle reservation. |
-| `GET` | `/api/v1/bookings/my` | `authGuard` | Retrieves customer bookings populated with `customerId` (`name`, `email`) and `vehicleId` (`model`, `type`). |
-| `PATCH` | `/api/v1/bookings/:id/status` | `authGuard` | Updates status (`reserved`, `ongoing`, `completed`, `cancelled`) with RBAC and intelligent vehicle release. |
-| `GET` | `/api/v1/health` | Public | Real-time system uptime & MongoDB connection monitor. |
-
----
-
-## 🚀 Running the Applications
-
-### 1. Start MongoDB (If running locally):
-Ensure MongoDB Community Server is started on `mongodb://127.0.0.1:27017`.
-
-### 2. Seed Database:
-```bash
-cd driveeasy/server
-npm run seed
-```
-
-### 3. Start Backend:
+### 2. Start the Backend API Server:
 ```bash
 cd driveeasy/server
 npm run dev
 ```
-> Server runs on `http://localhost:5000`.
+> Express server starts on **`http://localhost:5000`** with nodemon and live Mongoose connection.
 
-### 4. Start Frontend:
+### 3. Start the Frontend Client:
+In a second terminal window:
 ```bash
 cd driveeasy/client
 npm run dev
 ```
-> Client runs on `http://localhost:5173`.
+> Vite dev server starts on **`http://localhost:5173`**.
+
+### 4. Build Client Bundle:
+```bash
+cd driveeasy/client
+npm run build
+```
+> Compiles all modules cleanly into `dist/` with `AdminPanel` code-split into its own lazy chunk (`dist/assets/AdminPanel-*.js`).
+
+---
+
+## 🔗 Frontend-to-Backend Integration Architecture
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Student / Examiner
+    participant Browser as React SPA (Port 5173)
+    participant Services as Client Services (api.js / vehicleService.js / bookingService.js)
+    participant Server as Express API (Port 5000)
+    participant DB as MongoDB (Port 27017)
+
+    Note over User,Browser: 1. Authentication Flow
+    User->>Browser: Enters email & password on LoginPage
+    Browser->>Services: loginUser(email, password)
+    Services->>Server: POST /api/v1/auth/login
+    Server->>DB: Customer.findOne({ email }).select('+passwordHash')
+    DB-->>Server: Customer Document with bcrypt hash
+    Server->>Server: bcrypt.compare(password, passwordHash)
+    Server-->>Services: { success: true, token, customer }
+    Services-->>Browser: Saves token in localStorage & updates AuthContext
+    Browser->>Browser: Redirects to /fleet
+
+    Note over User,Browser: 2. Fleet Browsing & Client-Side Filtering
+    Browser->>Services: fetchVehicles() on mount
+    Services->>Server: GET /api/v1/vehicles
+    Server->>DB: Vehicle.find()
+    DB-->>Server: 6 Fleet Documents
+    Server-->>Services: Array of Vehicles
+    Services-->>Browser: Store full fleet in state
+    User->>Browser: Clicks "SUV" filter tab
+    Browser->>Browser: vehicles.filter(v => v.type === 'SUV') (No API refetch!)
+
+    Note over User,Browser: 3. Double-Booking Prevention & Reservation
+    User->>Browser: Clicks "Book Now", selects dates, clicks "Confirm Reservation"
+    Browser->>Services: createBookingApi({ vehicleId, pickupDate, returnDate })
+    Services->>Server: POST /api/v1/bookings (Authorization: Bearer <token>)
+    Server->>Server: authGuard verifies JWT & extracts req.user.id
+    Server->>DB: Check date overlap: (pickupDate < newReturn && returnDate > newPickup)
+    DB-->>Server: No overlap found
+    Server->>DB: Create Booking & Vehicle.findByIdAndUpdate(available: false)
+    DB-->>Server: Created Booking
+    Server-->>Services: HTTP 201 Created
+    Services-->>Browser: Success Banner & triggers loadFleet() to update UI
+```
+
+---
+
+## 🛡️ Role-Based Access Control & Demonstration Accounts
+
+The login page contains one-click test credential fill buttons for each role:
+
+| Role | Email | Password | Permissions & Available Views |
+|---|---|---|---|
+| **Customer** | `customer@driveeasy.com` | `customer123` | View fleet, create reservations, view & cancel own bookings in **My Bookings**. Restricted from Admin Panel. |
+| **Fleet Manager** | `manager@driveeasy.com` | `manager123` | View fleet, view all customer bookings, dispatch cars (mark `ongoing`), toggle fleet availability. |
+| **Administrator** | `admin@driveeasy.com` | `admin123` | Full administrative control: all bookings, complete/cancel any booking, toggle fleet availability, and revenue insights. |
+
+---
+
+## 📡 Complete REST API Endpoints
+
+| Method | Endpoint | Access | Function |
+|---|---|---|---|
+| `POST` | `/api/v1/auth/login` | Public | Authenticates credentials with bcrypt against MongoDB Customer record; returns signed JWT. |
+| `GET` | `/api/v1/vehicles` | Public | Retrieves all fleet vehicles; supports `?type=SUV` filter. |
+| `POST` | `/api/v1/vehicles` | `admin`, `fleetManager` | Adds a new vehicle to the fleet. |
+| `PATCH` | `/api/v1/vehicles/:id/availability` | `admin`, `fleetManager` | Toggles vehicle availability flag in MongoDB. |
+| `POST` | `/api/v1/bookings` | Authenticated (`authGuard`) | Reserves vehicle with interval date overlap check and transaction. |
+| `GET` | `/api/v1/bookings/my` | Authenticated (`authGuard`) | Retrieves customer's bookings with populated `customerId` and `vehicleId`. |
+| `GET` | `/api/v1/bookings` | `admin`, `fleetManager` | Retrieves all customer bookings across the platform. |
+| `PATCH` | `/api/v1/bookings/:id/status` | Authenticated (`authGuard`) | Updates status (`reserved`, `ongoing`, `completed`, `cancelled`) with RBAC restrictions and vehicle release. |
+| `GET` | `/api/v1/health` | Public | Live system health and MongoDB connection monitor. |
+
+---
+
+## 💡 Key Full-Stack Features Verified
+
+1. **No Mock or Hardcoded Production Data:**
+   - Both `FleetPage`, `MyBookingsPage`, and `AdminPanel` fetch 100% real MongoDB records via Express controllers.
+2. **Client-Side Filter Optimization:**
+   - On `FleetPage`, switching between *All, Hatchback, Sedan, SUV* filters the in-memory `vehicles` array using `.filter()` without triggering redundant HTTP requests.
+3. **Double-Booking Prevention:**
+   - Prevents overlapping reservations for the same car using mathematical date range intersection queries in MongoDB.
+4. **401 Session Invalidation:**
+   - When an expired or tampered token returns `401 Unauthorized`, `api.js` automatically clears `localStorage` and redirects the user to the login route.
+5. **Role Restrictions on Both Ends:**
+   - Frontend: `ProtectedRoute.jsx` blocks unauthorized navigation.
+   - Backend: `authGuard.js` and `roleGuard` reject unauthorized HTTP calls with `401 Unauthorized` or `403 Forbidden`.

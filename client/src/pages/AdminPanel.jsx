@@ -1,67 +1,127 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { fetchVehicles, toggleVehicleAvailabilityApi } from '../services/vehicleService';
+import { fetchAllBookingsApi, updateBookingStatusApi } from '../services/bookingService';
+import Loading from '../components/Loading';
+import ErrorMessage from '../components/ErrorMessage';
 
 /**
- * Initial mock data for fleet and booking administration
- */
-const INITIAL_ADMIN_FLEET = [
-  { id: 'V1', model: 'Maruti Suzuki Swift', type: 'Hatchback', pricePerDay: 1800, available: true, regNo: 'GJ-06-AB-1234' },
-  { id: 'V2', model: 'Honda City ZX', type: 'Sedan', pricePerDay: 2800, available: true, regNo: 'GJ-23-CD-5678' },
-  { id: 'V3', model: 'Hyundai Verna SX', type: 'Sedan', pricePerDay: 2700, available: false, regNo: 'GJ-01-EF-9012' },
-  { id: 'V4', model: 'Mahindra Scorpio-N', type: 'SUV', pricePerDay: 3500, available: true, regNo: 'GJ-05-GH-3456' },
-  { id: 'V5', model: 'Tata Harrier XZA', type: 'SUV', pricePerDay: 3800, available: true, regNo: 'GJ-06-IJ-7890' }
-];
-
-const INITIAL_ADMIN_BOOKINGS = [
-  { id: 'BK-1001', customer: 'Rahul Sharma', email: 'rahul@example.com', car: 'Honda City ZX', dates: '2026-11-01 to 2026-11-04', amount: 8400, status: 'Confirmed' },
-  { id: 'BK-1002', customer: 'Priya Patel', email: 'priya@example.com', car: 'Mahindra Scorpio-N', dates: '2026-11-10 to 2026-11-12', amount: 7000, status: 'Pending' },
-  { id: 'BK-1003', customer: 'Amit Verma', email: 'amit@example.com', car: 'Hyundai Verna SX', dates: '2026-11-05 to 2026-11-08', amount: 8100, status: 'Pending' },
-  { id: 'BK-0994', customer: 'Kavita Joshi', email: 'kavita@example.com', car: 'Maruti Suzuki Swift', dates: '2026-10-15 to 2026-10-17', amount: 3600, status: 'Completed' }
-];
-
-/**
- * AdminPanel Component
- * Management dashboard for administrators and fleet operations.
- * Includes sections for Vehicles, Bookings, and Booking-Status Management.
+ * AdminPanel Component (Lazy Loaded via React.lazy)
+ * Connects directly to backend API for fleet inventory, customer reservations,
+ * and booking status decisions.
  */
 const AdminPanel = () => {
   const { customer, role } = useAuth();
-  const [activeTab, setActiveTab] = useState('bookings'); // 'bookings' | 'vehicles' | 'status'
-  const [fleet, setFleet] = useState(INITIAL_ADMIN_FLEET);
-  const [bookings, setBookings] = useState(INITIAL_ADMIN_BOOKINGS);
-  const [toastMessage, setToastMessage] = useState('');
 
-  // Show temporary action feedback
+  const [fleet, setFleet] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('bookings'); // 'bookings' | 'vehicles' | 'status'
+  const [toastMessage, setToastMessage] = useState('');
+  const [updatingId, setUpdatingId] = useState(null);
+
   const showFeedback = (msg) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3000);
+    setTimeout(() => setToastMessage(''), 3500);
   };
 
-  // Toggle vehicle availability
-  const toggleVehicleAvailability = (vehicleId) => {
-    setFleet((prev) =>
-      prev.map((v) =>
-        v.id === vehicleId ? { ...v, available: !v.available } : v
-      )
-    );
-    showFeedback('Vehicle availability updated successfully!');
+  /**
+   * Load real data from MongoDB backend via authorized API endpoints
+   */
+  const loadAdminData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [bookingsRes, fleetRes] = await Promise.all([
+        fetchAllBookingsApi(),
+        fetchVehicles()
+      ]);
+
+      if (!bookingsRes.success && bookingsRes.status === 403) {
+        setError('Forbidden: Your account does not possess sufficient administrative privileges.');
+        setLoading(false);
+        return;
+      }
+
+      setBookings(Array.isArray(bookingsRes.data) ? bookingsRes.data : []);
+      setFleet(Array.isArray(fleetRes.data) ? fleetRes.data : []);
+    } catch (err) {
+      setError('Failed to communicate with administration API services.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Update booking status
-  const updateBookingStatus = (bookingId, newStatus) => {
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId ? { ...b, status: newStatus } : b
-      )
-    );
-    showFeedback(`Booking #${bookingId} status changed to ${newStatus}`);
+  useEffect(() => {
+    loadAdminData();
+  }, []);
+
+  /**
+   * Toggle vehicle availability in MongoDB via PATCH /api/v1/vehicles/:id/availability
+   */
+  const handleToggleAvailability = async (vehicleId) => {
+    setUpdatingId(vehicleId);
+    try {
+      const res = await toggleVehicleAvailabilityApi(vehicleId);
+      if (res.success) {
+        showFeedback(res.message || 'Vehicle availability updated in database.');
+        // Refresh fleet
+        const refreshedFleet = await fetchVehicles();
+        if (refreshedFleet.success) {
+          setFleet(refreshedFleet.data);
+        }
+      } else {
+        alert(res.error || 'Failed to update vehicle availability.');
+      }
+    } catch (err) {
+      alert('Error updating vehicle availability.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  /**
+   * Update booking status in MongoDB via PATCH /api/v1/bookings/:id/status
+   */
+  const handleUpdateStatus = async (bookingId, newStatus) => {
+    setUpdatingId(bookingId);
+    try {
+      const res = await updateBookingStatusApi(bookingId, newStatus);
+      if (res.success) {
+        showFeedback(`Booking status successfully changed to '${newStatus}'.`);
+        // Refresh bookings and fleet in parallel
+        loadAdminData();
+      } else {
+        alert(res.error || 'Failed to update booking status.');
+      }
+    } catch (err) {
+      alert('Error updating booking status.');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const isAdmin = role === 'admin';
+  const isManager = role === 'fleetManager' || role === 'fleet_manager';
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      return new Date(dateStr).toISOString().split('T')[0];
+    } catch {
+      return dateStr;
+    }
+  };
+
+  if (loading) {
+    return <Loading message="Loading Administrator and Fleet Console data from database..." />;
+  }
 
   return (
     <div className="admin-panel-page">
-      {/* Page Header with Role Distinction */}
+      {/* Page Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -71,20 +131,31 @@ const AdminPanel = () => {
         marginBottom: '2rem'
       }}>
         <div>
-          <h2>{isAdmin ? 'System Administrator Console' : 'Fleet Operations Management'}</h2>
+          <h2>{isAdmin ? 'System Administrator Console' : 'Fleet Operations Console'}</h2>
           <p style={{ marginTop: '0.25rem' }}>
             Logged in as <strong>{customer?.name}</strong> •{' '}
             <span style={{ color: 'var(--text-muted)' }}>
-              {isAdmin ? 'Full Administrative & Financial Clearance' : 'Fleet Dispatch & Booking Approval Operations'}
+              {isAdmin ? 'Full Administrative & Fleet Management Clearance' : 'Fleet Operations & Booking Approval Clearance'}
             </span>
           </p>
         </div>
-        <span className={`badge ${isAdmin ? 'badge-danger' : 'badge-warning'}`} style={{ padding: '0.4rem 0.8rem' }}>
-          {isAdmin ? '🛡️ Administrator Access' : '🚙 Fleet Manager Access'}
-        </span>
+
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={loadAdminData}
+            title="Refresh database records"
+          >
+            🔄 Refresh Data
+          </button>
+          <span className={`badge ${isAdmin ? 'badge-danger' : 'badge-warning'}`} style={{ padding: '0.4rem 0.8rem' }}>
+            {isAdmin ? '🛡️ Administrator' : '🚙 Fleet Manager'}
+          </span>
+        </div>
       </div>
 
-      {/* Toast Feedback Notification */}
+      {/* Toast Notification */}
       {toastMessage && (
         <div style={{
           background: '#ecfdf5',
@@ -99,10 +170,15 @@ const AdminPanel = () => {
         </div>
       )}
 
-      {/* KPI Overview Metrics */}
+      {/* Error Banner */}
+      {error && (
+        <ErrorMessage message={error} onRetry={loadAdminData} />
+      )}
+
+      {/* Dynamic KPI Overview Cards Calculated from Real MongoDB Data */}
       <div className="grid-4" style={{ marginBottom: '2.5rem' }}>
         <div className="card" style={{ padding: '1.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Fleet</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Fleet (MongoDB)</span>
           <h3 style={{ fontSize: '1.8rem', color: 'var(--primary)', marginTop: '0.25rem' }}>
             {fleet.length}
           </h3>
@@ -112,37 +188,37 @@ const AdminPanel = () => {
         </div>
 
         <div className="card" style={{ padding: '1.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Bookings</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Reservations</span>
           <h3 style={{ fontSize: '1.8rem', color: 'var(--text-main)', marginTop: '0.25rem' }}>
             {bookings.length}
           </h3>
           <span style={{ fontSize: '0.78rem', color: '#b45309' }}>
-            ● {bookings.filter((b) => b.status === 'Pending').length} Pending approval
+            ● {bookings.filter((b) => b.status === 'reserved').length} Active reserved
           </span>
         </div>
 
         <div className="card" style={{ padding: '1.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Confirmed Bookings</span>
-          <h3 style={{ fontSize: '1.8rem', color: 'var(--success)', marginTop: '0.25rem' }}>
-            {bookings.filter((b) => b.status === 'Confirmed').length}
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Ongoing Rentals</span>
+          <h3 style={{ fontSize: '1.8rem', color: 'var(--warning)', marginTop: '0.25rem' }}>
+            {bookings.filter((b) => b.status === 'ongoing').length}
           </h3>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Active reservations
+            Vehicles out on road
           </span>
         </div>
 
         <div className="card" style={{ padding: '1.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Estimated Revenue</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Booked Revenue</span>
           <h3 style={{ fontSize: '1.8rem', color: 'var(--primary)', marginTop: '0.25rem' }}>
-            ₹{bookings.reduce((sum, b) => sum + (b.amount || 0), 0).toLocaleString()}
+            ₹{bookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0).toLocaleString()}
           </h3>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Across all bookings
+            Across all customer bookings
           </span>
         </div>
       </div>
 
-      {/* Section Navigation Tabs */}
+      {/* Tabs */}
       <div style={{
         display: 'flex',
         gap: '0.5rem',
@@ -155,14 +231,14 @@ const AdminPanel = () => {
           className={`btn btn-sm ${activeTab === 'bookings' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('bookings')}
         >
-          📋 Bookings Management
+          📋 Customer Bookings ({bookings.length})
         </button>
         <button
           type="button"
           className={`btn btn-sm ${activeTab === 'vehicles' ? 'btn-primary' : 'btn-outline'}`}
           onClick={() => setActiveTab('vehicles')}
         >
-          🚗 Vehicle Fleet Inventory
+          🚗 Fleet Inventory ({fleet.length})
         </button>
         <button
           type="button"
@@ -178,63 +254,75 @@ const AdminPanel = () => {
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>All Customer Bookings</h3>
-              <p style={{ fontSize: '0.85rem' }}>Review reservations and track customer information</p>
+              <h3>Customer Bookings in Database</h3>
+              <p style={{ fontSize: '0.85rem' }}>Populated with customer and vehicle details from MongoDB</p>
             </div>
             <span className="badge badge-primary">{bookings.length} Records</span>
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Booking ID</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Customer</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Vehicle</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Dates</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Amount</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.map((b) => (
-                  <tr key={b.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '0.85rem 0.5rem', fontWeight: 600 }}>{b.id}</td>
-                    <td style={{ padding: '0.85rem 0.5rem' }}>
-                      <strong>{b.customer}</strong>
-                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        {b.email}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.85rem 0.5rem' }}>{b.car}</td>
-                    <td style={{ padding: '0.85rem 0.5rem', fontSize: '0.85rem' }}>{b.dates}</td>
-                    <td style={{ padding: '0.85rem 0.5rem', fontWeight: 700, color: 'var(--primary)' }}>
-                      ₹{b.amount.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '0.85rem 0.5rem' }}>
-                      <span className={`badge ${
-                        b.status === 'Confirmed' ? 'badge-success' :
-                        b.status === 'Pending' ? 'badge-warning' :
-                        b.status === 'Completed' ? 'badge-primary' : 'badge-danger'
-                      }`}>
-                        {b.status}
-                      </span>
-                    </td>
+          {bookings.length === 0 ? (
+            <p style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+              No customer bookings found in MongoDB.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>ID</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Customer</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Vehicle</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Dates</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Amount</th>
+                    <th style={{ padding: '0.75rem 0.5rem' }}>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {bookings.map((b) => (
+                    <tr key={b._id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '0.85rem 0.5rem', fontWeight: 600, fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        {b._id.slice(-6)}
+                      </td>
+                      <td style={{ padding: '0.85rem 0.5rem' }}>
+                        <strong>{b.customerId?.name || 'Customer'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          {b.customerId?.email}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 0.5rem' }}>
+                        {b.vehicleId?.model || 'Vehicle'} ({b.vehicleId?.type})
+                      </td>
+                      <td style={{ padding: '0.85rem 0.5rem', fontSize: '0.85rem' }}>
+                        {formatDate(b.pickupDate)} to {formatDate(b.returnDate)}
+                      </td>
+                      <td style={{ padding: '0.85rem 0.5rem', fontWeight: 700, color: 'var(--primary)' }}>
+                        ₹{b.totalPrice?.toLocaleString() || '0'}
+                      </td>
+                      <td style={{ padding: '0.85rem 0.5rem' }}>
+                        <span className={`badge ${
+                          b.status === 'completed' ? 'badge-success' :
+                          b.status === 'ongoing' ? 'badge-warning' :
+                          b.status === 'cancelled' ? 'badge-danger' : 'badge-primary'
+                        }`}>
+                          {b.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      {/* SECTION 2: VEHICLES INVENTORY */}
+      {/* SECTION 2: FLEET INVENTORY */}
       {activeTab === 'vehicles' && (
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>Fleet Vehicles Inventory</h3>
-              <p style={{ fontSize: '0.85rem' }}>Monitor vehicle status, rates, and fleet availability</p>
+              <h3>Fleet Inventory Management</h3>
+              <p style={{ fontSize: '0.85rem' }}>Toggle vehicle availability flags directly in MongoDB</p>
             </div>
             <span className="badge badge-primary">{fleet.length} Vehicles</span>
           </div>
@@ -243,25 +331,23 @@ const AdminPanel = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Code</th>
                   <th style={{ padding: '0.75rem 0.5rem' }}>Model</th>
                   <th style={{ padding: '0.75rem 0.5rem' }}>Category</th>
                   <th style={{ padding: '0.75rem 0.5rem' }}>Registration</th>
                   <th style={{ padding: '0.75rem 0.5rem' }}>Rate/Day</th>
                   <th style={{ padding: '0.75rem 0.5rem' }}>Availability</th>
-                  <th style={{ padding: '0.75rem 0.5rem' }}>Toggle</th>
+                  <th style={{ padding: '0.75rem 0.5rem' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {fleet.map((v) => (
-                  <tr key={v.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '0.85rem 0.5rem', fontWeight: 600 }}>{v.id}</td>
+                  <tr key={v._id || v.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <td style={{ padding: '0.85rem 0.5rem', fontWeight: 600 }}>{v.model}</td>
                     <td style={{ padding: '0.85rem 0.5rem' }}>
                       <span className="badge badge-primary">{v.type}</span>
                     </td>
                     <td style={{ padding: '0.85rem 0.5rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                      {v.regNo}
+                      {v.registrationNumber || 'GJ-06-REG'}
                     </td>
                     <td style={{ padding: '0.85rem 0.5rem', fontWeight: 700 }}>
                       ₹{v.pricePerDay}
@@ -270,17 +356,18 @@ const AdminPanel = () => {
                       {v.available ? (
                         <span className="badge badge-success">Available</span>
                       ) : (
-                        <span className="badge badge-danger">Reserved</span>
+                        <span className="badge badge-danger">Unavailable</span>
                       )}
                     </td>
                     <td style={{ padding: '0.85rem 0.5rem' }}>
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"
-                        onClick={() => toggleVehicleAvailability(v.id)}
+                        disabled={updatingId === v._id}
+                        onClick={() => handleToggleAvailability(v._id)}
                         style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                       >
-                        {v.available ? 'Mark Reserved' : 'Mark Available'}
+                        {v.available ? 'Mark Unavailable' : 'Mark Available'}
                       </button>
                     </td>
                   </tr>
@@ -291,84 +378,94 @@ const AdminPanel = () => {
         </div>
       )}
 
-      {/* SECTION 3: BOOKING-STATUS MANAGEMENT */}
+      {/* SECTION 3: STATUS DECISION CONSOLE */}
       {activeTab === 'status' && (
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>Booking Status Management Console</h3>
-              <p style={{ fontSize: '0.85rem' }}>Approve, complete, or reject pending rental requests</p>
+              <h3>Booking Status Decision Console</h3>
+              <p style={{ fontSize: '0.85rem' }}>
+                Approve, advance to ongoing, complete, or cancel bookings in MongoDB
+              </p>
             </div>
-            <span className="badge badge-warning">Action Center</span>
+            <span className="badge badge-warning">Live MongoDB Action Center</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {bookings.map((b) => (
-              <div
-                key={b.id}
-                style={{
-                  background: 'var(--bg-main)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '1rem'
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <strong>#{b.id} — {b.customer}</strong>
-                    <span className={`badge ${
-                      b.status === 'Confirmed' ? 'badge-success' :
-                      b.status === 'Pending' ? 'badge-warning' :
-                      b.status === 'Completed' ? 'badge-primary' : 'badge-danger'
-                    }`}>
-                      {b.status}
-                    </span>
+            {bookings.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)' }}>No bookings to manage.</p>
+            ) : (
+              bookings.map((b) => (
+                <div
+                  key={b._id}
+                  style={{
+                    background: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '1rem'
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <strong>#{b._id.slice(-6)} — {b.customerId?.name || 'Customer'}</strong>
+                      <span className={`badge ${
+                        b.status === 'completed' ? 'badge-success' :
+                        b.status === 'ongoing' ? 'badge-warning' :
+                        b.status === 'cancelled' ? 'badge-danger' : 'badge-primary'
+                      }`}>
+                        {b.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Vehicle: <strong>{b.vehicleId?.model}</strong> ({b.vehicleId?.type}) •{' '}
+                      Dates: {formatDate(b.pickupDate)} to {formatDate(b.returnDate)} • Total: ₹{b.totalPrice?.toLocaleString()}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                    Vehicle: {b.car} • Dates: {b.dates} • Total: ₹{b.amount.toLocaleString()}
-                  </div>
-                </div>
 
-                {/* Status action buttons */}
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  {b.status === 'Pending' && (
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      onClick={() => updateBookingStatus(b.id, 'Confirmed')}
-                      style={{ fontSize: '0.78rem' }}
-                    >
-                      ✓ Approve Booking
-                    </button>
-                  )}
-                  {b.status === 'Confirmed' && (
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => updateBookingStatus(b.id, 'Completed')}
-                      style={{ fontSize: '0.78rem', borderColor: 'var(--success)', color: 'var(--success)' }}
-                    >
-                      ✓ Mark Completed
-                    </button>
-                  )}
-                  {b.status !== 'Cancelled' && b.status !== 'Completed' && (
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => updateBookingStatus(b.id, 'Cancelled')}
-                      style={{ fontSize: '0.78rem', borderColor: '#fca5a5', color: '#b91c1c' }}
-                    >
-                      ✕ Reject / Cancel
-                    </button>
-                  )}
+                  {/* Real Status Action Buttons */}
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {b.status === 'reserved' && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={updatingId === b._id}
+                        onClick={() => handleUpdateStatus(b._id, 'ongoing')}
+                        style={{ fontSize: '0.78rem' }}
+                      >
+                        🚗 Dispatch (Ongoing)
+                      </button>
+                    )}
+                    {b.status === 'ongoing' && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        disabled={updatingId === b._id}
+                        onClick={() => handleUpdateStatus(b._id, 'completed')}
+                        style={{ fontSize: '0.78rem', borderColor: 'var(--success)', color: 'var(--success)' }}
+                      >
+                        ✓ Mark Completed
+                      </button>
+                    )}
+                    {b.status !== 'cancelled' && b.status !== 'completed' && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        disabled={updatingId === b._id}
+                        onClick={() => handleUpdateStatus(b._id, 'cancelled')}
+                        style={{ fontSize: '0.78rem', borderColor: '#fca5a5', color: '#b91c1c' }}
+                      >
+                        ✕ Cancel Booking
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}

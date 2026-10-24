@@ -51,7 +51,66 @@ const getVehicleById = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Toggle vehicle availability flag (Admin / Fleet Manager only)
+ * @route   PATCH /api/v1/vehicles/:id/availability
+ * @access  Private (authGuard + roleGuard)
+ */
+const toggleVehicleAvailability = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const vehicle = await Vehicle.findById(id);
+
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: `Vehicle with ID '${id}' was not found.`
+      });
+    }
+
+    vehicle.available = !vehicle.available;
+    await vehicle.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Vehicle '${vehicle.model}' availability updated to ${vehicle.available}.`,
+      data: vehicle
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Add a new vehicle to the fleet (Admin / Fleet Manager only)
+ * @route   POST /api/v1/vehicles
+ * @access  Private (authGuard + roleGuard)
+ */
+const createVehicle = async (req, res, next) => {
+  try {
+    const { model, type, pricePerDay, registrationNumber, available } = req.body;
+
+    const vehicle = await Vehicle.create({
+      model,
+      type,
+      pricePerDay,
+      registrationNumber: registrationNumber || `GJ-06-REG-${Date.now().toString().slice(-4)}`,
+      available: available !== undefined ? available : true
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Vehicle '${vehicle.model}' added to fleet successfully.`,
+      data: vehicle
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getVehicles,
-  getVehicleById
+  getVehicleById,
+  toggleVehicleAvailability,
+  createVehicle
 };
