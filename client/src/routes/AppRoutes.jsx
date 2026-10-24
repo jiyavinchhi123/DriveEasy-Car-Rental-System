@@ -49,7 +49,7 @@ const AppRoutes = () => {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute allowedRoles={['admin', 'fleet_manager']}>
+          <ProtectedRoute allowedRoles={['admin', 'fleet_manager', 'fleetManager']}>
             <Suspense fallback={<Loading message="Loading Administrator & Fleet Console..." />}>
               <AdminPanel />
             </Suspense>

@@ -23,6 +23,7 @@ const Navbar = () => {
       case 'admin':
         return <span className="badge badge-danger">🛡️ Admin</span>;
       case 'fleet_manager':
+      case 'fleetManager':
         return <span className="badge badge-warning">🚙 Fleet Manager</span>;
       default:
         return <span className="badge badge-primary">👤 Customer</span>;
@@ -68,7 +69,7 @@ const Navbar = () => {
                 </li>
 
                 {/* Only visible to Admin and Fleet Manager roles */}
-                {(role === 'admin' || role === 'fleet_manager') && (
+                {(role === 'admin' || role === 'fleet_manager' || role === 'fleetManager') && (
                   <li>
                     <NavLink
                       to="/admin"

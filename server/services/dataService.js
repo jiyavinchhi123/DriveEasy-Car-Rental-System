@@ -103,6 +103,12 @@ let memoryBookings = [];
  * Initialize seed data into MongoDB if connected
  */
 const seedDatabaseIfConnected = async () => {
+  // Confirm demo seeding is NOT automatically enabled in production
+  if (process.env.NODE_ENV === 'production') {
+    console.log('[Seed] Production environment detected; skipping automatic database seeding.');
+    return;
+  }
+
   if (mongoose.connection.readyState !== 1) {
     return;
   }
