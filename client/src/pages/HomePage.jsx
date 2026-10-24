@@ -1,15 +1,16 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import StatusCard from '../components/StatusCard';
 
 /**
  * HomePage Component
- * Landing Dashboard for Stage 1: Foundation & Starter Shell
+ * Landing Dashboard for DriveEasy Car Rental System
  */
 const HomePage = () => {
   const stages = [
-    { num: 'Stage 1', name: 'Foundation & Shell', status: 'Completed', current: true },
-    { num: 'Stage 2', name: 'User Authentication & JWT', status: 'Upcoming', current: false },
-    { num: 'Stage 3', name: 'Car Fleet Management', status: 'Upcoming', current: false },
+    { num: 'Stage 1', name: 'Foundation & Shell', status: 'Completed', current: false },
+    { num: 'Stage 2', name: 'Frontend Architecture & UI', status: 'Completed', current: true },
+    { num: 'Stage 3', name: 'Car Fleet & Backend CRUD', status: 'Upcoming', current: false },
     { num: 'Stage 4', name: 'Rental Booking System', status: 'Upcoming', current: false },
     { num: 'Stage 5', name: 'User & Admin Dashboards', status: 'Upcoming', current: false },
     { num: 'Stage 6', name: 'Payment & Notifications', status: 'Upcoming', current: false },
@@ -33,59 +34,62 @@ const HomePage = () => {
           Clean architecture, modular design, and viva-ready code.
         </p>
         <div className="hero-actions">
-          <a href="#health-monitor" className="btn btn-primary" id="btn-hero-test">
-            ⚡ Run Health Verification
-          </a>
-          <a href="#architecture" className="btn btn-outline" id="btn-hero-arch">
-            📐 System Architecture
+          <Link to="/fleet" className="btn btn-primary" id="btn-hero-fleet">
+            🚗 Explore Vehicle Fleet ➔
+          </Link>
+          <Link to="/admin" className="btn btn-outline" id="btn-hero-admin">
+            🛡️ Admin Panel
+          </Link>
+          <a href="#health-monitor" className="btn btn-outline" id="btn-hero-test">
+            ⚡ Health Check
           </a>
         </div>
       </section>
 
-      {/* Grid: Health Check Widget & Stage 1 Deliverables Summary */}
+      {/* Grid: Health Check Widget & System Deliverables Summary */}
       <div className="grid-2">
         {/* Live Health Monitor Widget */}
         <StatusCard />
 
-        {/* Foundation Deliverables Checklist */}
+        {/* Deliverables Checklist */}
         <div className="card">
           <div className="card-header">
             <div>
-              <h3>Stage 1 Deliverables</h3>
-              <p style={{ fontSize: '0.85rem' }}>Foundation Verification</p>
+              <h3>Frontend Component Architecture</h3>
+              <p style={{ fontSize: '0.85rem' }}>Components & UI Pages Verification</p>
             </div>
-            <span className="badge badge-success">Verified</span>
+            <span className="badge badge-success">Stage 2 Active</span>
           </div>
 
           <table className="info-table">
             <tbody>
               <tr>
-                <td className="label">Frontend Stack</td>
-                <td className="value">React 18 + Vite (JavaScript / JSX)</td>
+                <td className="label">VehicleCard.jsx</td>
+                <td className="value">Props: model, type, pricePerDay, available, onBook</td>
               </tr>
               <tr>
-                <td className="label">Routing</td>
-                <td className="value">React Router DOM (AppRoutes.jsx)</td>
+                <td className="label">FleetPage.jsx</td>
+                <td className="value">Filter tabs (All, Hatchback, Sedan, SUV) + Grid</td>
               </tr>
               <tr>
-                <td className="label">State Management</td>
-                <td className="value">React Context (AuthContext.jsx)</td>
+                <td className="label">BookingForm.jsx</td>
+                <td className="value">Selected car, dates, duration & total price calculation</td>
               </tr>
               <tr>
-                <td className="label">Backend Server</td>
-                <td className="value">Node.js + Express (app.js, server.js)</td>
+                <td className="label">LoginPage.jsx</td>
+                <td className="value">Client validation, error alerts, AuthContext integration</td>
               </tr>
               <tr>
-                <td className="label">Database Layer</td>
-                <td className="value">MongoDB + Mongoose (decoupled db.js)</td>
+                <td className="label">MyBookingsPage.jsx</td>
+                <td className="value">Booking list, status badges, empty & error states</td>
               </tr>
               <tr>
-                <td className="label">Authentication Prep</td>
-                <td className="value">JWT Bearer Token Middleware</td>
+                <td className="label">AdminPanel.jsx</td>
+                <td className="value">KPI metrics, Fleet, Bookings & Status decision console</td>
               </tr>
               <tr>
-                <td className="label">API Security</td>
-                <td className="value">CORS Enabled + Sanitized Errors</td>
+                <td className="label">Navbar.jsx</td>
+                <td className="value">React Router Link SPA navigation (no page reloads)</td>
               </tr>
             </tbody>
           </table>
@@ -162,7 +166,7 @@ const HomePage = () => {
               <div style={{ fontWeight: 700, fontSize: '0.95rem', margin: '0.35rem 0' }}>
                 {stg.name}
               </div>
-              <span className={`badge ${stg.current ? 'badge-primary' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
+              <span className={`badge ${stg.current ? 'badge-primary' : stg.status === 'Completed' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.7rem' }}>
                 {stg.status}
               </span>
             </div>

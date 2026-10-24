@@ -2,18 +2,16 @@
 
 **Course:** ITUE301 Open-Book Practical Examination  
 **Institution:** CSPIT, CHARUSAT  
-**Development Stage:** Stage 1 — Foundation & Starter Shell  
+**Development Stage:** Stage 2 — Frontend Component Architecture & UI  
 **Architecture:** Full-Stack MERN (Node.js, Express, MongoDB, React, Vite)
 
 ---
 
 ## 📌 Project Overview
 
-**DriveEasy Car Rental System** is an end-to-end full-stack web application designed for seamless vehicle rentals. The system is engineered using a modular, decoupled architecture where:
-- The **Backend (Express + Node.js)** exposes RESTful endpoints, handles MongoDB connections via Mongoose, enforces CORS, provides standardized error handling, and prepares JWT Bearer token authentication.
-- The **Frontend (React + Vite)** provides a responsive, component-driven user interface with React Router DOM, state management via React Context (`useState`, `useEffect`, `useContext`), and an API client module.
-
-This repository represents **Stage 1: Foundation and Starter Shell**, creating the structural, configuration, and security baseline for subsequent feature stages.
+**DriveEasy Car Rental System** is an end-to-end full-stack web application designed for seamless vehicle rentals.
+- The **Backend (Express + Node.js)** exposes modular RESTful endpoints (`/api/v1`), connects to MongoDB via Mongoose, enforces CORS, provides standardized error handling, and prepares JWT Bearer token authentication.
+- The **Frontend (React + Vite)** provides a component-driven SPA interface with React Router DOM, state management via React Context (`useState`, `useEffect`, `useContext`), and an API client module.
 
 ---
 
@@ -21,192 +19,138 @@ This repository represents **Stage 1: Foundation and Starter Shell**, creating t
 
 ```text
 driveeasy/
-├── client/                      # Frontend Application (React + Vite)
+├── client/                          # Frontend Application (React 18 + Vite)
 │   ├── src/
-│   │   ├── components/          # Reusable UI Components
-│   │   │   ├── Navbar.jsx       # Top navigation header
-│   │   │   ├── Footer.jsx       # University/Exam metadata footer
-│   │   │   └── StatusCard.jsx   # Live backend & database health monitor
-│   │   ├── pages/               # Routed Views
-│   │   │   ├── HomePage.jsx     # Foundation dashboard & health verification
-│   │   │   └── NotFoundPage.jsx # 404 Route handler
-│   │   ├── context/             # State Management
-│   │   │   └── AuthContext.jsx  # React Context (useState, useEffect, useContext)
-│   │   ├── services/            # API Communication
-│   │   │   └── api.js           # Fetch wrapper with configurable base URL
-│   │   ├── routes/              # Routing Configuration
-│   │   │   └── AppRoutes.jsx    # React Router DOM (Routes, Route)
-│   │   ├── App.jsx              # Main Application Layout
-│   │   ├── main.jsx             # React entry point with BrowserRouter & AuthProvider
-│   │   └── index.css            # Global CSS design system (Vanilla CSS)
-│   ├── .env.example             # Frontend environment variables template
-│   ├── .env                     # Local frontend environment config
-│   ├── index.html               # Vite HTML entry point with modern typography
-│   ├── package.json             # Frontend dependencies and scripts
-│   └── vite.config.js           # Vite build configuration (Port 5173)
+│   │   ├── components/              # Reusable UI Components
+│   │   │   ├── VehicleCard.jsx      # Props: model, type, pricePerDay, available, onBook
+│   │   │   ├── BookingForm.jsx      # Vehicle reservation form & price calculation
+│   │   │   ├── Navbar.jsx           # React Router Link SPA navigation bar
+│   │   │   ├── Loading.jsx          # Reusable loading spinner indicator
+│   │   │   ├── ErrorMessage.jsx     # Reusable error alert banner with retry
+│   │   │   ├── StatusCard.jsx       # Real-time backend & DB health monitor
+│   │   │   └── Footer.jsx           # University & examination metadata footer
+│   │   ├── pages/                   # Routed Application Pages
+│   │   │   ├── HomePage.jsx         # System overview & live health verification
+│   │   │   ├── LoginPage.jsx        # Login with client validation & auth connection
+│   │   │   ├── FleetPage.jsx        # Vehicle fleet grid, type filter & booking form
+│   │   │   ├── MyBookingsPage.jsx   # Booking list with loading, empty & error states
+│   │   │   ├── AdminPanel.jsx       # Admin dashboard: Fleet, Bookings & Status
+│   │   │   └── NotFoundPage.jsx     # 404 Route handler
+│   │   ├── context/                 # State Management
+│   │   │   └── AuthContext.jsx      # Context API (useState, useEffect, useContext)
+│   │   ├── services/                # API Client
+│   │   │   └── api.js               # Universal fetch client with JWT Bearer support
+│   │   ├── routes/                  # Client-side Routing
+│   │   │   └── AppRoutes.jsx        # Routes for /, /login, /fleet, /my-bookings, /admin
+│   │   ├── App.jsx                  # Main Application Layout
+│   │   ├── main.jsx                 # Entry point with BrowserRouter & AuthProvider
+│   │   └── index.css                # Global CSS design system (Vanilla CSS)
+│   ├── .env.example                 # Frontend environment variables template
+│   ├── .env                         # Local frontend environment config
+│   ├── index.html                   # HTML entry point with modern Google Fonts
+│   ├── package.json                 # Frontend dependencies and npm scripts
+│   └── vite.config.js               # Vite build configuration (Port 5173)
 │
-├── server/                      # Backend REST API (Node.js + Express)
+├── server/                          # Backend REST API (Node.js + Express)
 │   ├── config/
-│   │   └── db.js                # Decoupled MongoDB connection logic
+│   │   └── db.js                    # Decoupled MongoDB connection logic
 │   ├── controllers/
-│   │   └── healthController.js  # Controller for health-check endpoint
+│   │   └── healthController.js      # Controller for /api/v1/health
 │   ├── middleware/
-│   │   ├── authMiddleware.js    # JWT Bearer token validation middleware
-│   │   ├── errorHandler.js      # Centralized error handler (no leaked secrets)
-│   │   └── notFoundHandler.js   # 404 handler for undefined API routes
+│   │   ├── authMiddleware.js        # JWT Bearer token authentication middleware
+│   │   ├── errorHandler.js          # Centralized error handler (no leaked secrets)
+│   │   └── notFoundHandler.js       # 404 handler for undefined API routes
 │   ├── models/
-│   │   └── index.js             # Placeholder for upcoming User, Car, Rental models
+│   │   └── index.js                 # Placeholder for User, Car, Rental models
 │   ├── routes/
-│   │   ├── healthRoutes.js      # Router for /api/v1/health
-│   │   └── index.js             # API v1 central router
+│   │   ├── healthRoutes.js          # Route handler for /api/v1/health
+│   │   └── index.js                 # API v1 central router
 │   ├── services/
-│   │   └── healthService.js     # Health metrics and DB state evaluator
-│   ├── app.js                   # Express app setup, CORS, and middleware
-│   ├── server.js                # Server entry point (starts listener & connectDB)
-│   ├── .env.example             # Server environment variables template
-│   ├── .env                     # Local server environment config
-│   └── package.json             # Backend dependencies and scripts
+│   │   └── healthService.js         # Health metrics and DB state evaluator
+│   ├── app.js                       # Express application configuration & CORS
+│   ├── server.js                    # Server entry point
+│   ├── .env.example                 # Server environment variables template
+│   ├── .env                         # Local server environment config
+│   └── package.json                 # Backend dependencies and npm scripts
 │
-├── .gitignore                   # Ignores node_modules, .env, and dist
-└── README.md                    # Project documentation & run guide
+├── .gitignore                       # Ignores node_modules, .env, and dist
+└── README.md                        # Documentation & examination guide
 ```
 
 ---
 
-## ⚙️ Prerequisites
+## 🎨 Component Architecture & Data Flow
 
-Make sure the following software is installed on your workstation:
-1. **Node.js**: v18.0.0 or later (Tested with v24.13.0)
-2. **npm**: v9.0.0 or later (Tested with v11.6.2)
-3. **MongoDB**: Local MongoDB Community Edition running on port `27017` (Optional for Stage 1 health check, required for database persistence in Stage 2+)
-4. **API Testing Tool**: Thunder Client (VS Code extension) or Postman
+### 1. `VehicleCard.jsx`
+- **Props Accepted:**
+  - `model` *(string)*: Vehicle name (e.g., "Honda City ZX")
+  - `type` *(string)*: Vehicle category ("Hatchback", "Sedan", "SUV")
+  - `pricePerDay` *(number)*: Daily rental rate (e.g., 2800)
+  - `available` *(boolean)*: Availability status flag
+  - `onBook` *(function)*: Optional callback invoked when the user clicks "Book Now"
+- **Behavior:**
+  - Renders all 4 required vehicle properties.
+  - When `available === true`: Displays active status dot and **"Book Now ➔"** button.
+  - When `available === false`: Displays red status dot and **"Not Available"** badge instead of the button.
+  - Clicking "Book Now" executes `onBook({ model, type, pricePerDay, available })`.
 
----
+### 2. `FleetPage.jsx`
+- Contains filter tabs: **All**, **Hatchback**, **Sedan**, and **SUV**.
+- Integrates `BookingForm` with `selectedVehicle`, `pickupDate`, and `returnDate` managed via `useState`.
+- Shows real-time selected vehicle and chosen dates state updates.
+- Renders a responsive grid of `VehicleCard` components using clean prop passing from parent.
+- Prepares for live API data (`GET /cars`) with fallback to initial sample fleet.
 
-## 🚀 Installation & Setup Instructions
+### 3. `LoginPage.jsx`
+- Provides Email and Password input fields with accessible labels.
+- Client-side validation: verifies non-empty inputs, valid email pattern, and minimum password length.
+- Connects to `AuthContext` and `api.js` login service.
+- **Strict verification:** Never pretends authentication succeeded if the backend rejects credentials.
+- Includes examination quick-fill test credentials.
 
-Open your terminal in the `driveeasy` folder:
+### 4. `MyBookingsPage.jsx`
+- Displays user car rental reservations with vehicle details, pickup date, return date, and status badges (*Confirmed, Pending, Completed, Cancelled*).
+- Implements comprehensive state handling:
+  - **Loading State:** uses `<Loading />` spinner.
+  - **Empty State:** clean prompt to explore fleet when no bookings exist.
+  - **Error State:** uses `<ErrorMessage onRetry={...} />`.
 
-### 1. Setup Backend (`server`)
+### 5. `AdminPanel.jsx`
+- Dedicated console for administrators and fleet managers.
+- Top KPI cards: Total Fleet, Available Cars, Pending Bookings, Total Estimated Revenue.
+- 3 distinct management sections:
+  1. **Bookings Management:** Table of all customer reservations.
+  2. **Vehicle Fleet Inventory:** Fleet table with real-time availability toggle.
+  3. **Status Decision Console:** Approve pending requests, complete rentals, or cancel bookings.
 
-```bash
-# Navigate to the server folder
-cd server
-
-# Install backend dependencies
-npm install
-
-# Verify environment variables
-# Note: A default .env is already supplied based on .env.example
-```
-
-#### Backend Environment Variables (`server/.env`)
-| Variable | Default Value | Description |
-|---|---|---|
-| `PORT` | `5000` | Port on which Express server listens |
-| `NODE_ENV` | `development` | Runtime environment |
-| `CLIENT_URL` | `http://localhost:5173` | Allowed frontend origin for CORS |
-| `MONGO_URI` | `mongodb://127.0.0.1:27017/driveeasy` | MongoDB connection string |
-| `JWT_SECRET` | `driveeasy_super_secret_jwt_key_...` | Secret key for JWT signing |
-| `JWT_EXPIRES_IN` | `7d` | Token expiration period |
-
----
-
-### 2. Setup Frontend (`client`)
-
-```bash
-# Navigate to the client folder (from driveeasy root)
-cd ../client
-
-# Install frontend dependencies
-npm install
-
-# Verify environment variables
-# Note: A default .env is already supplied based on .env.example
-```
-
-#### Frontend Environment Variables (`client/.env`)
-| Variable | Default Value | Description |
-|---|---|---|
-| `VITE_API_BASE_URL` | `http://localhost:5000/api/v1` | Backend API base URL |
+### 6. `Navbar.jsx`
+- Uses **React Router `Link`** components for instantaneous SPA navigation without page refreshes.
+- Links to: **Dashboard (`/`)**, **Fleet (`/fleet`)**, **My Bookings (`/my-bookings`)**, **Admin Panel (`/admin`)**, and **Login (`/login`)**.
 
 ---
 
-## 💻 Running the Applications
+## 🚀 Running the Project
 
-### Starting the Backend Server
+### Start Backend Server:
 ```bash
 cd driveeasy/server
 npm run dev
 ```
-> The backend will start with `nodemon` on **`http://localhost:5000`**.  
-> Nodemon will automatically reload the server whenever backend files are modified.
+> Server runs on `http://localhost:5000` with nodemon.
 
-### Starting the Frontend Client
-Open a second terminal window:
+### Start Frontend Client:
 ```bash
 cd driveeasy/client
 npm run dev
 ```
-> The Vite development server will start on **`http://localhost:5173`**.
+> Client runs on `http://localhost:5173` with Vite.
 
----
-
-## 🧪 Testing the Health Check API
-
-### Using Browser or Postman / Thunder Client
-
-#### 1. System Health Check
-- **Method:** `GET`
-- **URL:** `http://localhost:5000/api/v1/health`
-- **Expected Status:** `200 OK`
-- **Sample JSON Response:**
-```json
-{
-  "success": true,
-  "message": "DriveEasy Car Rental API is operating normally",
-  "data": {
-    "application": "DriveEasy Car Rental System API",
-    "status": "healthy",
-    "stage": "Stage 1 - Foundation & Starter Shell",
-    "version": "1.0.0",
-    "environment": "development",
-    "timestamp": "2026-10-24T17:45:00.000Z",
-    "uptimeSeconds": 42,
-    "database": {
-      "status": "connected",
-      "connected": true
-    }
-  }
-}
+### Verify Frontend Production Build:
+```bash
+cd driveeasy/client
+npm run build
 ```
-
-#### 2. Root API Welcome Route
-- **Method:** `GET`
-- **URL:** `http://localhost:5000/api/v1`
-- **Expected Status:** `200 OK`
-
-#### 3. Undefined Route (404 Verification)
-- **Method:** `GET`
-- **URL:** `http://localhost:5000/api/v1/unknown`
-- **Expected Status:** `404 Not Found`
-- **Response:**
-```json
-{
-  "success": false,
-  "message": "Resource not found: Cannot GET /api/v1/unknown"
-}
-```
-
----
-
-## 🔒 Security & Code Quality Practices Implemented
-
-1. **Decoupled Database Initialization:** Database connection logic is isolated in `config/db.js` so connection issues do not crash the Express application process.
-2. **No Hardcoded Secrets:** All ports, secrets, URIs, and origins are parsed from `.env` via `dotenv` with `.env.example` templates committed to source control.
-3. **Information Disclosure Prevention:** The centralized error handler `middleware/errorHandler.js` intercepts unhandled exceptions and prevents internal stack traces from leaking to the client.
-4. **CORS Whitelisting:** Cross-Origin Resource Sharing is explicitly configured for `CLIENT_URL` (`http://localhost:5173`), preventing unauthorized cross-origin requests.
-5. **Viva-Friendly Readability:** Written in pure JavaScript (ES6+ / CommonJS for Node, JSX for React) with clear inline comments, semantic naming, and modular separation of concerns.
+*(Build transforms all modules cleanly without any compilation errors)*
 
 ---
 
@@ -214,10 +158,10 @@ npm run dev
 
 | Stage | Milestone | Status | Description |
 |---|---|---|---|
-| **Stage 1** | **Foundation & Starter Shell** | ✅ **Completed** | Full-stack architecture, package.json, health endpoint, routing, context shell |
-| **Stage 2** | User Authentication | ⏳ Next | User schema, registration, login, JWT issuance, password hashing |
-| **Stage 3** | Car Fleet Management | ⏳ Upcoming | Car schema, CRUD endpoints, category filtering, search |
-| **Stage 4** | Rental Booking System | ⏳ Upcoming | Booking transactions, availability check, date calculation |
-| **Stage 5** | Dashboards & Profile | ⏳ Upcoming | Customer rental history, admin fleet management UI |
-| **Stage 6** | Payments & Notifications | ⏳ Upcoming | Payment calculation, status updates, invoice receipts |
-| **Stage 7** | Testing & Final Polish | ⏳ Upcoming | API testing collection, UI refinements, final review |
+| **Stage 1** | **Foundation & Starter Shell** | ✅ Completed | Server & client setup, health check endpoint, environment variables, CORS |
+| **Stage 2** | **Frontend Component Architecture & UI** | ✅ **Completed** | VehicleCard, BookingForm, Navbar, LoginPage, FleetPage, MyBookingsPage, AdminPanel |
+| **Stage 3** | Car Fleet Management | ⏳ Next | Car Mongoose schema, seed script, REST CRUD endpoints (`/api/v1/cars`) |
+| **Stage 4** | Rental Booking System | ⏳ Upcoming | Rental schema, booking transactions, date validation & total cost calculation |
+| **Stage 5** | Authentication & Role Guards | ⏳ Upcoming | User registration, login, JWT issuance, ProtectedRoute component |
+| **Stage 6** | Payments & Notifications | ⏳ Upcoming | Invoice receipts, payment calculation & alerts |
+| **Stage 7** | Testing & Final Polish | ⏳ Upcoming | Thunder Client API collection, UI polish & final viva documentation |
