@@ -11,9 +11,6 @@ const Footer = () => {
         <p className="footer-title">
           DriveEasy Car Rental System • Full-Stack Web Application
         </p>
-        <p className="footer-subtitle">
-          Developed for ITUE301 Open-Book Practical Examination • CSPIT, CHARUSAT
-        </p>
         <p className="footer-subtitle" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
           MERN Stack Architecture • Node.js, Express, MongoDB, React, Vite
         </p>
